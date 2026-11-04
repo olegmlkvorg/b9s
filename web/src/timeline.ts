@@ -154,7 +154,8 @@ export function renderTimeline(): void {
   const lanes = layout(items, now, w.past, w.ahead, D.project.all);
   const bars = lanes.flatMap(l => l.bars), critPath = criticalPath(bars), crit = new Set(critPath), full = w.past + w.ahead, from = now - w.past;
   const onView = new Set(bars.map(b => b.i.id)), off = new Map(bars.map(b => [b.i.id, waitsOffView(b.i, onView)]));
-  const offText = (id: string) => (off.get(id) || []).map(x => `\nwaits on ${shortId(x)} ${get(x)?.t || ""} (outside this view)`).join("");
+  const waitText = (b: Bar) => barState(b.i) === "blocked" && !b.i.blocked_by.length ? "\nmarked blocked, no item named as the cause"
+    : (off.get(b.i.id) || []).map(x => `\nwaits on ${shortId(x)} ${get(x)?.t || ""} (outside this view)`).join("");
   const pct = (x: number) => (x * 100).toFixed(3) + "%";
   const steps = [H, 2 * H, 6 * H, 12 * H, DAY, 2 * DAY, 7 * DAY, 14 * DAY];
   const every = steps.find(s => full / s <= (innerWidth < 600 ? 5 : 10)) || 30 * DAY; // a phone grid is 600 px wide: half the ticks
@@ -171,7 +172,7 @@ export function renderTimeline(): void {
     const fw = right ? (b.x1 - b.x0) / Math.max(b.x1, 1e-6) : (b.x1 - b.x0) / Math.max(1 - b.x0, 1e-6);
     // The label starts past a short fill, so the fill's pattern stays visible; on a long fill it starts at the bar, so it stays in view on a phone.
     const room = right ? b.x1 : 1 - b.x0, lead = b.x1 - b.x0 < room / 2 ? b.x1 - b.x0 : 0, nowAt = Math.min(1, Math.max(0, (w.past / full - b.x0) / Math.max(b.x1 - b.x0, 1e-6)));
-    return `<button class="tlbar s-${state}${right ? " rt" : ""}${b.live ? " live" : ""}${b.planned ? " planned" : ""}${b.approx ? " approx" : ""}${crit.has(b.i.id) ? " crit" : ""}" data-open="${esc(b.i.id)}" data-tl="${esc(b.i.id)}" title="${esc(`${b.i.t}\n${timeText(b.start, b.live ? now : b.end, b.live, b.approx)}${offText(b.i.id)}`)}" aria-label="${esc(label)}"`
+    return `<button class="tlbar s-${state}${right ? " rt" : ""}${b.live ? " live" : ""}${b.planned ? " planned" : ""}${b.approx ? " approx" : ""}${crit.has(b.i.id) ? " crit" : ""}" data-open="${esc(b.i.id)}" data-tl="${esc(b.i.id)}" title="${esc(`${b.i.t}\n${timeText(b.start, b.live ? now : b.end, b.live, b.approx)}${waitText(b)}`)}" aria-label="${esc(label)}"`
       + ` style="${place};top:${4 + row * ROW}px;--lead:${pct(lead)};--now:${pct(nowAt)}"><i class="tlfill" style="width:${pct(Math.min(1, fw))}"></i>${badgeHTML(b.i.assignee)}<span class="tllab"><span class="tlmk" aria-hidden="true">${STATES[state].g}</span><span class="t">${esc(b.i.t)}</span></span></button>`;
   };
   const head = `<div class="tlhead"><span class="tlwins" role="group" aria-label="Window">${WINDOWS.map(x => `<button class="chip${x.key === win ? " on" : ""}" data-tlwin="${x.key}" aria-pressed="${x.key === win}">${x.key}</button>`).join("")}</span>`

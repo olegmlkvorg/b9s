@@ -156,6 +156,7 @@ test.describe("place and focus", () => {
   // m-1 runs from before the window's middle to a far due date, so its label starts at the bar and a sideways scroll can hide it.
   const many = Array.from({ length: 40 }, (_, n) => ({ id: `m-${n}`, title: `[${n}] A long enough item title ${n}`, status: "in_progress", assignee: n % 2 ? "bob" : "alice", ...(n === 1 ? { startedMinutesAgo: 1200, dueInMinutes: 3000 } : {}) }));
   test.use({ fixture: { issues: [...many,
+    { id: "o-3", title: "[52] Marked blocked by hand", status: "blocked", assignee: "bob", startedMinutesAgo: 60 },
     { id: "o-1", title: "[50] Far blocker with no dates", status: "open" },
     { id: "o-2", title: "[51] Waits on far work", status: "in_progress", assignee: "bob", blockedBy: ["o-1"], startedMinutesAgo: 60 },
   ] } });
@@ -184,6 +185,12 @@ test.describe("place and focus", () => {
     await expect(bar).toHaveAttribute("title", /waits on .*Far blocker.*outside this view/);
     await bar.dispatchEvent("mouseover");
     await expect(v.locator('.tlarrows path.off[data-off="o-2"]')).toHaveCount(1);
+  });
+
+  test("a bar marked blocked with no dependency says so", async ({ page, project }) => {
+    await open(page, project);
+    await page.locator('#bar [data-view="timeline"]').click();
+    await expect(page.locator('#vTimeline [data-tl="o-3"]')).toHaveAttribute("title", /marked blocked, no item named as the cause/);
   });
 
   test("opening an item leaves its label clear of the owner column and the rows where they were", async ({ page, project }) => {
