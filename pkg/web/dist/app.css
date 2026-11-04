@@ -600,6 +600,7 @@
 .tlbar .tlfill { position: absolute; top: 2px; bottom: 2px; left: 0; min-width: 6px; border-radius: 3px; background: var(--bg3); border: 1px solid var(--line); border-left: 3px solid var(--c); }
 .tlbar.rt .tlfill { left: auto; right: 0; }
 .tlbar:hover, .tlbar:focus-visible { background: var(--hover); outline: 1px solid var(--accent); }
+.tlbar .st { line-height: 1; }
 .tlbar .t { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .tlbar.planned .tlfill { background: var(--transparent); border-style: dashed; }
 .tlbar.approx .tlfill { border-left-style: dotted; }

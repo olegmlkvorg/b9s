@@ -36,15 +36,17 @@ export function span(i: Item, now: number): Omit<Bar, "i" | "x0" | "x1"> | null 
   return { start, end: Math.max(start, end), approx: !real, live, planned: false };
 }
 
-/** fitWindow starts a tenth before the earliest unclosed bar (or now) and ends a tenth after the latest, at least FIT_MIN long;
- * past FIT_MAX it keeps the start, so the far-off due dates drop off the end rather than today's work off the start. */
+/** fitWindow starts a tenth before the earliest unclosed bar (or now) and ends a tenth after the 90th percentile of their ends,
+ * so one far-off due date does not shrink the rest to a sliver; at least FIT_MIN long, at most FIT_MAX, keeping the start. */
 export function fitWindow(items: Item[], now: number): { past: number; ahead: number } {
-  let lo = now, hi = now;
+  let lo = now; const ends: number[] = [now];
   for (const i of items) {
     if (eff(i) === "closed") continue;
     const s = span(i, now); if (!s) continue;
-    lo = Math.min(lo, s.start); hi = Math.max(hi, s.end);
+    lo = Math.min(lo, s.start); ends.push(s.end);
   }
+  ends.sort((a, b) => a - b);
+  const hi = ends[Math.floor(0.9 * (ends.length - 1))];
   const full = Math.min(FIT_MAX, Math.max(FIT_MIN, (hi - lo) * 1.2));
   const from = Math.min(lo - (full - Math.min(full, hi - lo)) / 2, now - full * 0.05);
   return { past: now - from, ahead: from + full - now };
