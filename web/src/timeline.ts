@@ -161,8 +161,8 @@ export function renderTimeline(): void {
     // always has room; the fill inside is the bar itself, at least 6 px wide so a ten-minute item still shows.
     const place = right ? `left:0;width:${pct(b.x1)}` : `left:${pct(b.x0)};width:${pct(1 - b.x0)}`;
     const fw = right ? (b.x1 - b.x0) / Math.max(b.x1, 1e-6) : (b.x1 - b.x0) / Math.max(1 - b.x0, 1e-6);
-    // The label starts past a short fill, so the fill's pattern stays visible; a long fill keeps half the button for the label.
-    const room = right ? b.x1 : 1 - b.x0, lead = Math.min(b.x1 - b.x0, room / 2), nowAt = Math.min(1, Math.max(0, (w.past / full - b.x0) / Math.max(b.x1 - b.x0, 1e-6)));
+    // The label starts past a short fill, so the fill's pattern stays visible; on a long fill it starts at the bar, so it stays in view on a phone.
+    const room = right ? b.x1 : 1 - b.x0, lead = b.x1 - b.x0 < room / 2 ? b.x1 - b.x0 : 0, nowAt = Math.min(1, Math.max(0, (w.past / full - b.x0) / Math.max(b.x1 - b.x0, 1e-6)));
     return `<button class="tlbar s-${state}${right ? " rt" : ""}${b.live ? " live" : ""}${b.planned ? " planned" : ""}${b.approx ? " approx" : ""}${crit.has(b.i.id) ? " crit" : ""}" data-open="${esc(b.i.id)}" data-tl="${esc(b.i.id)}" title="${esc(`${b.i.t}\n${timeText(b.start, b.live ? now : b.end, b.live, b.approx)}`)}" aria-label="${esc(label)}"`
       + ` style="${place};top:${4 + row * ROW}px;--lead:${pct(lead)};--now:${pct(nowAt)}"><i class="tlfill" style="width:${pct(Math.min(1, fw))}"></i>${badgeHTML(b.i.assignee)}<span class="tllab"><span class="tlmk" aria-hidden="true">${STATES[state].g}</span><span class="t">${esc(b.i.t)}</span></span></button>`;
   };
