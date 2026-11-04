@@ -26,11 +26,11 @@ test("the window chips change the span the timeline covers", async ({ page, proj
   await expect(page.locator('#vTimeline [data-tl="t-1"]')).toBeVisible();
 });
 
-test("the default window fits the work, every bar has its own row, epics head their sections, and Back returns to Timeline", async ({ page, project }) => {
+test("the default window is 3d, every bar has its own row, epics head their sections, and Back returns to Timeline", async ({ page, project }) => {
   await open(page, project);
   await page.locator('#bar [data-view="timeline"]').click();
   const v = page.locator("#vTimeline");
-  await expect(v.locator('[data-tlwin="fit"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(v.locator('[data-tlwin="3d"]')).toHaveAttribute("aria-pressed", "true");
   await expect(v.locator(".tlgroup", { hasText: "Epic: Mobile web" })).toHaveCount(1);
   const tops = await v.locator(".tlbar").evaluateAll(els => els.map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.bottom)]; }));
   const sorted = tops.sort((a, b) => a[0] - b[0]);
@@ -56,5 +56,23 @@ test.describe("arrows", () => {
     await expect(v.locator(".tlarrows > path")).toHaveCount(0);
     await v.locator('[data-tl="t-7"]').hover();
     await expect(v.locator(".tlarrows path.hot")).toHaveCount(1);
+  });
+});
+
+test.describe("rows", () => {
+  test.use({ fixture: { issues: [
+    { id: "t-a", title: "[a] One", status: "in_progress", assignee: "cara" },
+    { id: "t-b", title: "[b] Two", status: "in_progress", assignee: "cara" },
+    { id: "t-c", title: "[c] Three", status: "in_progress", assignee: "cara" },
+    { id: "t-d", title: "[d] Four", status: "closed", assignee: "cara" },
+  ] } });
+  test("overlapping bars in one lane each get their own row", async ({ page, project }) => {
+    await open(page, project);
+    await page.locator('#bar [data-view="timeline"]').click();
+    const bars = page.locator("#vTimeline .tlbar");
+    await expect(bars).toHaveCount(4);
+    await expect(page.locator("#vTimeline .tllane:not(.tlaxis)")).toHaveCount(1);
+    const r = (await bars.evaluateAll(els => els.map(e => { const b = e.getBoundingClientRect(); return [b.top, b.bottom]; }))).sort((a, b) => a[0] - b[0]);
+    for (let k = 1; k < r.length; k++) expect(r[k][0]).toBeGreaterThanOrEqual(r[k - 1][1] - 0.5);
   });
 });

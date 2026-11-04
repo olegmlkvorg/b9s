@@ -1,7 +1,7 @@
 // The timeline view: a Gantt of the project's work. Sections are epics (inside each project when b9s shows all projects), and
 // inside a section every issue gets its own row, grouped by assignee, so no two bars overlap. Each bar runs from when work began
 // (started_at; else the planned start; else created, marked approximate) to closed, now, or the due date. A never-started issue
-// with a due date is planned and drawn outlined. The default window ("fit") spans the open and in-progress work. "blocks"
+// with a due date is planned and drawn outlined. The default window is 3d (a day back, two ahead); "fit" spans the open work. "blocks"
 // arrows are drawn for the critical path (the longest open chain) and for the hovered or opened issue only. The tree's text
 // query and project filter apply; status chips do not, since closed work belongs on a timeline. A bar opens the detail.
 
@@ -13,7 +13,7 @@ const H = 3600e3, DAY = 24 * H;
 /** past: how far back the window reaches; ahead: how far past now. "fit" is computed from the items (fitWindow). */
 export const WINDOWS = [
   { key: "fit", past: 0, ahead: 0 },
-  { key: "12h", past: 12 * H, ahead: 2 * H }, { key: "3d", past: 3 * DAY, ahead: 8 * H },
+  { key: "12h", past: 12 * H, ahead: 2 * H }, { key: "3d", past: DAY, ahead: 2 * DAY },
   { key: "plan 7d", past: DAY, ahead: 7 * DAY }, { key: "plan 30d", past: 2 * DAY, ahead: 30 * DAY },
 ] as const;
 export type WindowKey = typeof WINDOWS[number]["key"];
@@ -120,8 +120,9 @@ const badgeHTML = (name: string) => {
   return `<span class="tlav" aria-hidden="true">${esc(b.initials)}</span>`;
 };
 
-let win: WindowKey = store.get<WindowKey>("timelineWindow", "fit");
-if (!WINDOWS.some(w => w.key === win)) win = "fit";
+// 3d (a day back, two ahead) is the default so today's work reads on first open; a picked chip is remembered.
+let win: WindowKey = store.get<WindowKey>("timelineWindow", "3d");
+if (!WINDOWS.some(w => w.key === win)) win = "3d";
 export const setTimelineWindow = (k: string) => { if (WINDOWS.some(w => w.key === k)) { win = k as WindowKey; store.set("timelineWindow", k); } };
 
 const ROW = 26;
