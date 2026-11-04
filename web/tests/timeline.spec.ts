@@ -38,7 +38,9 @@ test("the default window fits the work, every bar has its own row, epics head th
   const w = await v.locator('[data-tl="t-1"] .tlfill').evaluate(e => e.getBoundingClientRect().width);
   expect(w).toBeGreaterThanOrEqual(6);
   await v.locator('[data-tl="t-1"]').click();
-  await expect(page.locator(".detail .back")).toContainText("Timeline");
+  await expect(page.locator(".detail")).toHaveAttribute("data-id", "t-1");
+  // A split layout shows the detail as a pane with no Back; a phone sheet names the view it returns to.
+  if (await page.locator('.detail .back[data-act="dclose"]').count()) await expect(page.locator('.detail .back[data-act="dclose"]')).toHaveText("‹ Timeline");
 });
 
 test.describe("arrows", () => {
