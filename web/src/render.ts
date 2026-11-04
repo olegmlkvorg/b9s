@@ -899,7 +899,7 @@ export function renderDetail(was = detailPlace()): void {
   const size = isSplit ? (full ? ["⤡", "Side panel"] : ["⤢", "Full width"]) : (full ? ["⌄", "Half height"] : ["⌃", "Full height"]);
   const back = S.detail.stack.length > 1
     ? `<button class="back" data-act="dback" aria-label="Back to previous issue">‹ ${esc(shortId(S.detail.stack[S.detail.stack.length - 2]))}</button>`
-    : (!isSplit ? `<button class="back" data-act="dclose" aria-label="Back to issue list">‹ Tree</button>` : "");
+    : (!isSplit ? `<button class="back" data-act="dclose" aria-label="Back to issue list">‹ ${({ tree: "Tree", board: "Board", search: "Search", more: "More", graph: "Graph", memory: "Memory", timeline: "Timeline" } as const)[S.view]}</button>` : "");
   // A finger swipes to the next sibling; a mouse has buttons for it.
   const pager = desktop()
     ? `<button data-act="dprev" aria-label="Previous sibling" title="Previous sibling (p)"${pos > 0 ? "" : " disabled"}>‹</button><span class="pager">${pos + 1}/${sib.length}</span><button data-act="dnext" aria-label="Next sibling" title="Next sibling (n)"${pos < sib.length - 1 ? "" : " disabled"}>›</button>`

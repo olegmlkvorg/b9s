@@ -1,27 +1,29 @@
-// The timeline view: a Gantt of the project's work. One lane per assignee, grouped by project when b9s shows
-// all projects; each bar runs from when work began (started_at; else the planned start; else created, marked
-// approximate) to closed, now, or the due date. A never-started issue with a due date is planned and drawn
-// outlined. "blocks" relations are arrows from the issue waited on to the waiter, and the longest open chain of
-// them (the critical path) is outlined. The tree's text query and project filter apply; status chips do not,
-// since closed work belongs on a timeline. Tapping a bar opens the issue's detail like any row (data-open).
+// The timeline view: a Gantt of the project's work. Sections are epics (inside each project when b9s shows all projects), and
+// inside a section every issue gets its own row, grouped by assignee, so no two bars overlap. Each bar runs from when work began
+// (started_at; else the planned start; else created, marked approximate) to closed, now, or the due date. A never-started issue
+// with a due date is planned and drawn outlined. The default window ("fit") spans the open and in-progress work. "blocks"
+// arrows are drawn for the critical path (the longest open chain) and for the hovered or opened issue only. The tree's text
+// query and project filter apply; status chips do not, since closed work belongs on a timeline. A bar opens the detail.
 
-import { D, eff, pool, projectOf, shortId, type Item } from "./data";
-import { stOf, textMatches } from "./state";
+import { D, ancestors, eff, get, pool, projectOf, shortId, type Item } from "./data";
+import { S, stOf, textMatches } from "./state";
 import { $, esc, parseTime, store } from "./util";
 
 const H = 3600e3, DAY = 24 * H;
-/** past: how far back the window reaches; ahead: how far past now */
+/** past: how far back the window reaches; ahead: how far past now. "fit" is computed from the items (fitWindow). */
 export const WINDOWS = [
+  { key: "fit", past: 0, ahead: 0 },
   { key: "12h", past: 12 * H, ahead: 2 * H }, { key: "3d", past: 3 * DAY, ahead: 8 * H },
   { key: "plan 7d", past: DAY, ahead: 7 * DAY }, { key: "plan 30d", past: 2 * DAY, ahead: 30 * DAY },
 ] as const;
 export type WindowKey = typeof WINDOWS[number]["key"];
+export const FIT_MIN = 12 * H, FIT_MAX = 60 * DAY;
 
-export interface Bar { i: Item; start: number; end: number; approx: boolean; live: boolean; planned: boolean; x0: number; x1: number; sub: number }
-export interface Lane { group: string; owner: string; bars: Bar[]; subs: number }
+export interface Bar { i: Item; start: number; end: number; approx: boolean; live: boolean; planned: boolean; x0: number; x1: number }
+export interface Lane { group: string; owner: string; bars: Bar[] }
 
 /** span places one issue in time, or null when it was never started and has no due date. */
-export function span(i: Item, now: number): Omit<Bar, "i" | "x0" | "x1" | "sub"> | null {
+export function span(i: Item, now: number): Omit<Bar, "i" | "x0" | "x1"> | null {
   const real = parseTime(i.started_at), closed = eff(i) === "closed", live = eff(i) === "in_progress";
   const plan = parseTime(i.planned_start) || parseTime(i.defer_until), due = parseTime(i.due);
   if (!real && !closed && !live) {
@@ -30,30 +32,47 @@ export function span(i: Item, now: number): Omit<Bar, "i" | "x0" | "x1" | "sub">
     return { start, end: Math.max(start, due), approx: !plan, live: false, planned: true };
   }
   const start = real || plan || parseTime(i.created_at) || now;
-  const end = closed ? parseTime(i.closed_at) || parseTime(i.updated_at) || now : live ? Math.max(now, due && due > now ? 0 : now) : parseTime(i.updated_at) || now;
+  const end = closed ? parseTime(i.closed_at) || parseTime(i.updated_at) || now : live ? Math.max(now, parseTime(i.due) || 0) : parseTime(i.updated_at) || now;
   return { start, end: Math.max(start, end), approx: !real, live, planned: false };
 }
 
-/** layout returns the lanes for the issues in [now - past, now + ahead]: one per project and assignee, overlapping bars stacked. */
+/** fitWindow spans the unclosed work (and now), padded by a tenth each side, clamped to [FIT_MIN, FIT_MAX] and kept ending after now. */
+export function fitWindow(items: Item[], now: number): { past: number; ahead: number } {
+  let lo = now, hi = now;
+  for (const i of items) {
+    if (eff(i) === "closed") continue;
+    const s = span(i, now); if (!s) continue;
+    lo = Math.min(lo, s.start); hi = Math.max(hi, s.end);
+  }
+  let full = Math.min(FIT_MAX, Math.max(FIT_MIN, (hi - lo) * 1.2));
+  let from = Math.max(lo - (full - (hi - lo)) / 2, hi + full * 0.1 - full);
+  if (from + full < now + full * 0.05) from = now + full * 0.05 - full;
+  return { past: now - from, ahead: from + full - now };
+}
+
+/** epicOf names the section an issue sits in: its nearest epic ancestor (or itself when it is an epic), else "". */
+export function epicOf(i: Item): string {
+  if (i.type === "epic") return i.id;
+  return ancestors(i.id).find(a => get(a)?.type === "epic") || "";
+}
+
+/** layout returns one lane per section and assignee in [now - past, now + ahead]; each bar is its own row, earliest first. */
 export function layout(items: Item[], now: number, past: number, ahead: number, byProject: boolean): Lane[] {
   const from = now - past, full = past + ahead, lanes = new Map<string, Bar[]>();
   for (const i of items) {
     const s = span(i, now);
     if (!s || s.end < from || s.start > from + full) continue;
-    const key = (byProject ? projectOf(i) : "") + "\u0000" + (i.assignee || "");
+    const e = epicOf(i), ep = e ? get(e) : undefined;
+    const group = (byProject ? projectOf(i) + " / " : "") + (ep ? ep.t : "No epic");
+    const key = group + "\u0000" + (i.assignee || "");
     if (!lanes.has(key)) lanes.set(key, []);
-    lanes.get(key)!.push({ i, ...s, x0: Math.max(0, (s.start - from) / full), x1: Math.min(1, (s.end - from) / full), sub: 0 });
+    lanes.get(key)!.push({ i, ...s, x0: Math.max(0, (s.start - from) / full), x1: Math.min(1, (s.end - from) / full) });
   }
+  const noEpic = (g: string) => g.endsWith("No epic") ? 1 : 0;
   return [...lanes].map(([key, bars]) => {
     const [group, owner] = key.split("\u0000");
-    const ends: number[] = [];
-    for (const b of bars.sort((a, c) => a.start - c.start)) {
-      let k = ends.findIndex(e => e <= b.start);
-      if (k < 0) k = ends.push(0) - 1;
-      ends[k] = b.end; b.sub = k;
-    }
-    return { group, owner, bars, subs: ends.length };
-  }).sort((a, b) => a.group.localeCompare(b.group) || (a.owner ? 0 : 1) - (b.owner ? 0 : 1)
+    return { group, owner, bars: bars.sort((a, c) => a.start - c.start) };
+  }).sort((a, b) => noEpic(a.group) - noEpic(b.group) || a.group.localeCompare(b.group) || (a.owner ? 0 : 1) - (b.owner ? 0 : 1)
     || Number(b.bars.some(x => x.live)) - Number(a.bars.some(x => x.live)) || a.owner.localeCompare(b.owner));
 }
 
@@ -99,47 +118,73 @@ const badgeHTML = (name: string) => {
   return `<span class="tlav" aria-hidden="true">${esc(b.initials)}</span>`;
 };
 
-let win: WindowKey = store.get<WindowKey>("timelineWindow", "plan 7d");
-if (!WINDOWS.some(w => w.key === win)) win = "plan 7d";
+let win: WindowKey = store.get<WindowKey>("timelineWindow", "fit");
+if (!WINDOWS.some(w => w.key === win)) win = "fit";
 export const setTimelineWindow = (k: string) => { if (WINDOWS.some(w => w.key === k)) { win = k as WindowKey; store.set("timelineWindow", k); } };
 
+const ROW = 26;
+let drawn: { edges: [string, string][]; crit: string[] } = { edges: [], crit: [] };
+
 export function renderTimeline(): void {
-  const v = $("#vTimeline"), now = Date.now(), w = WINDOWS.find(x => x.key === win)!;
+  const v = $("#vTimeline"), now = Date.now();
   const items = pool().filter(textMatches);
+  const w = win === "fit" ? fitWindow(items, now) : WINDOWS.find(x => x.key === win)!;
   const lanes = layout(items, now, w.past, w.ahead, D.project.all);
-  const bars = lanes.flatMap(l => l.bars), crit = new Set(criticalPath(bars)), full = w.past + w.ahead, from = now - w.past;
+  const bars = lanes.flatMap(l => l.bars), critPath = criticalPath(bars), crit = new Set(critPath), full = w.past + w.ahead, from = now - w.past;
   const pct = (x: number) => (x * 100).toFixed(3) + "%";
-  const every = full <= 16 * H ? H * 2 : full <= 4 * DAY ? 12 * H : full <= 10 * DAY ? DAY : 7 * DAY;
+  const steps = [H, 2 * H, 6 * H, 12 * H, DAY, 2 * DAY, 7 * DAY, 14 * DAY];
+  const every = steps.find(s => full / s <= 10) || 30 * DAY;
   const ticks: number[] = []; for (let t = Math.ceil(from / every) * every; t <= from + full; t += every) ticks.push(t);
   const lab = (t: number) => new Date(t).toLocaleString(undefined, every < DAY ? { weekday: "short", hour: "2-digit", minute: "2-digit" } : { weekday: "short", day: "numeric", month: "short" });
-  const grid = ticks.map(t => `<div class="tltick" style="left:${pct((t - from) / full)}"></div>`).join("") + `<div class="tlnow" style="left:${pct(w.past / full)}"></div>`;
+  const grid = ticks.map(t => `<div class="tltick" style="left:${pct((t - from) / full)}"></div>`).join("") + (w.past <= full ? `<div class="tlnow" style="left:${pct(w.past / full)}"></div>` : "");
   const when = (t: number) => new Date(t).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-  const bar = (b: Bar) => {
-    const st = stOf(eff(b.i));
+  const bar = (b: Bar, row: number) => {
+    const st = stOf(eff(b.i)), right = b.x0 > 0.62;
     const label = `${shortId(b.i.id)} ${b.i.t}, ${b.i.assignee || "unassigned"}, ${b.planned ? "planned" : st.w}${crit.has(b.i.id) ? ", critical path" : ""}, ${b.approx ? "about " : ""}${when(b.start)} to ${b.live ? "now" : when(b.end)}`;
-    return `<button class="tlbar${b.planned ? " planned" : ""}${b.approx ? " approx" : ""}${crit.has(b.i.id) ? " crit" : ""}" data-open="${esc(b.i.id)}" data-tl="${esc(b.i.id)}" title="${esc(label)}" aria-label="${esc(label)}"`
-      + ` style="left:${pct(b.x0)};width:${pct(Math.max(b.x1 - b.x0, 0.004))};top:${4 + b.sub * 30}px;--c:${st.c}">${badgeHTML(b.i.assignee)}<span class="st" style="color:var(--c)" aria-hidden="true">${st.g}</span><span class="t">${esc(b.i.t)}</span></button>`;
+    // The button reaches from the bar to the track's far edge (or, near the right, from the near edge to the bar), so the label
+    // always has room; the fill inside is the bar itself, at least 6 px wide so a ten-minute item still shows.
+    const place = right ? `left:0;width:${pct(b.x1)}` : `left:${pct(b.x0)};width:${pct(1 - b.x0)}`;
+    const fw = right ? (b.x1 - b.x0) / Math.max(b.x1, 1e-6) : (b.x1 - b.x0) / Math.max(1 - b.x0, 1e-6);
+    return `<button class="tlbar${right ? " rt" : ""}${b.planned ? " planned" : ""}${b.approx ? " approx" : ""}${crit.has(b.i.id) ? " crit" : ""}" data-open="${esc(b.i.id)}" data-tl="${esc(b.i.id)}" title="${esc(label)}" aria-label="${esc(label)}"`
+      + ` style="${place};top:${4 + row * ROW}px;--c:${st.c}"><i class="tlfill" style="width:${pct(Math.min(1, fw))}"></i>${badgeHTML(b.i.assignee)}<span class="st" style="color:var(--c)" aria-hidden="true">${st.g}</span><span class="t">${esc(b.i.t)}</span></button>`;
   };
   const head = `<div class="tlhead"><span class="tlwins" role="group" aria-label="Window">${WINDOWS.map(x => `<button class="chip${x.key === win ? " on" : ""}" data-tlwin="${x.key}" aria-pressed="${x.key === win}">${x.key}</button>`).join("")}</span>`
-    + `<span class="tlkey"><span><i class="tlk" style="--c:var(--cyan)"></i>in progress</span><span><i class="tlk" style="--c:var(--muted)"></i>closed</span><span><i class="tlk planned"></i>planned</span><span><i class="tlk crit"></i>critical path</span><span>→ waits on</span></span></div>`;
+    + `<span class="tlkey"><span><i class="tlk" style="--c:var(--cyan)"></i>in progress</span><span><i class="tlk" style="--c:var(--muted)"></i>closed</span><span><i class="tlk planned"></i>planned</span><span><i class="tlk crit"></i>critical path</span><span>hover a bar: → waits on</span></span></div>`;
   if (!lanes.length) { v.innerHTML = head + `<div class="empty">Nothing started, closed or planned in this window. Planned work needs a due date.</div>`; return; }
   v.innerHTML = head + `<div class="scroll tlscroll"><div class="tlgrid"><div class="tllane tlaxis"><div class="tlwho"></div><div class="tltrack">${ticks.map(t => `<span style="left:${pct((t - from) / full)}">${esc(lab(t))}</span>`).join("")}</div></div>`
-    + lanes.map((l, n) => (D.project.all && l.group !== lanes[n - 1]?.group ? `<div class="sec tlgroup">${esc(l.group)}</div>` : "")
-      + `<div class="tllane"><div class="tlwho">${badgeHTML(l.owner)}<span>${esc(l.owner || "unassigned")}</span></div><div class="tltrack" style="height:${l.subs * 30 + 8}px">${grid}${l.bars.map(bar).join("")}</div></div>`).join("")
+    + lanes.map((l, n) => (l.group !== lanes[n - 1]?.group ? `<div class="sec tlgroup">${esc(l.group)}</div>` : "")
+      + `<div class="tllane"><div class="tlwho">${badgeHTML(l.owner)}<span>${esc(l.owner || "unassigned")}</span></div><div class="tltrack" style="height:${l.bars.length * ROW + 8}px">${grid}${l.bars.map(bar).join("")}</div></div>`).join("")
     + `</div></div>`;
-  drawArrows(v, edges(bars));
+  drawn = { edges: edges(bars), crit: critPath };
+  const open = S.detail?.stack[S.detail.stack.length - 1];
+  drawArrows(v, open);
+  if (!v.dataset.tlHover) {
+    v.dataset.tlHover = "1";
+    const on = (e: Event) => { const b = (e.target as HTMLElement).closest<HTMLElement>("[data-tl]"); drawArrows(v, b?.dataset.tl || S.detail?.stack[S.detail.stack.length - 1]); };
+    v.addEventListener("mouseover", on); v.addEventListener("focusin", on);
+  }
 }
 
-/** one SVG over the grid, measured off the drawn bars: from the end of the issue waited on to the start of the waiter */
-function drawArrows(v: HTMLElement, es: [string, string][]): void {
+/** shownEdges are the critical path's links plus every link that touches focus. */
+export function shownEdges(all: [string, string][], crit: string[], focus?: string): [string, string][] {
+  const onPath = new Set(crit.slice(1).map((id, k) => id + "\u0000" + crit[k]));
+  return all.filter(([a, b]) => a === focus || b === focus || onPath.has(a + "\u0000" + b));
+}
+
+/** one SVG over the grid, measured off the drawn fills: from the end of the issue waited on to the start of the waiter */
+function drawArrows(v: HTMLElement, focus?: string): void {
   const grid = v.querySelector<HTMLElement>(".tlgrid");
-  if (!grid || !es.length) return;
+  if (!grid) return;
+  grid.querySelector(".tlarrows")?.remove();
+  const es = shownEdges(drawn.edges, drawn.crit, focus);
+  if (!es.length) return;
   const g = grid.getBoundingClientRect();
-  const at = (id: string) => grid.querySelector<HTMLElement>(`[data-tl="${CSS.escape(id)}"]`)?.getBoundingClientRect();
+  const at = (id: string) => grid.querySelector<HTMLElement>(`[data-tl="${CSS.escape(id)}"] .tlfill`)?.getBoundingClientRect();
   const paths = es.flatMap(([waiter, on]) => {
     const a = at(on), b = at(waiter); if (!a || !b) return [];
     const x1 = a.right - g.left, y1 = a.top + a.height / 2 - g.top, x2 = b.left - g.left, y2 = b.top + b.height / 2 - g.top, mx = Math.max(x1 + 8, (x1 + x2) / 2);
-    return [`<path d="M${x1},${y1} C${mx},${y1} ${Math.min(mx, x2 - 8)},${y2} ${x2},${y2}" marker-end="url(#tlah)"/>`];
+    const hot = waiter === focus || on === focus;
+    return [`<path class="${hot ? "hot" : "cp"}" d="M${x1},${y1} C${mx},${y1} ${Math.min(mx, x2 - 8)},${y2} ${x2},${y2}" marker-end="url(#tlah)"/>`];
   });
   grid.insertAdjacentHTML("beforeend", `<svg class="tlarrows" width="${g.width}" height="${g.height}" aria-hidden="true"><defs><marker id="tlah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L8,4L0,8z"/></marker></defs>${paths.join("")}</svg>`);
 }

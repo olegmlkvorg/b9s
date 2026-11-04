@@ -594,16 +594,23 @@
 .tltick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-soft); }
 .tlnow { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); z-index: 1; }
 .tlgroup { padding: 10px 12px 4px; }
-.tlbar { position: absolute; height: 26px; display: flex; align-items: center; gap: 4px; padding: 0 6px; border: 1px solid var(--line); border-left: 3px solid var(--c); border-radius: 4px; background: var(--bg3); color: var(--text); font: inherit; overflow: hidden; white-space: nowrap; cursor: pointer; z-index: 1; text-align: left; }
+.tlbar { position: absolute; height: 22px; display: flex; align-items: center; gap: 4px; padding: 0 4px; border: 0; border-radius: 4px; background: var(--transparent); color: var(--text); font: inherit; overflow: hidden; white-space: nowrap; cursor: pointer; z-index: 1; text-align: left; }
+.tlbar.rt { flex-direction: row-reverse; text-align: right; }
+.tlbar > * { position: relative; }
+.tlbar .tlfill { position: absolute; top: 2px; bottom: 2px; left: 0; min-width: 6px; border-radius: 3px; background: var(--bg3); border: 1px solid var(--line); border-left: 3px solid var(--c); }
+.tlbar.rt .tlfill { left: auto; right: 0; }
 .tlbar:hover, .tlbar:focus-visible { background: var(--hover); outline: 1px solid var(--accent); }
-.tlbar .t { overflow: hidden; text-overflow: ellipsis; }
-.tlbar.planned { background: var(--transparent); border-style: dashed; }
-.tlbar.approx { border-left-style: dotted; }
-.tlbar.crit { box-shadow: 0 0 0 1px var(--priority); }
+.tlbar .t { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tlbar.planned .tlfill { background: var(--transparent); border-style: dashed; }
+.tlbar.approx .tlfill { border-left-style: dotted; }
+.tlbar.crit .tlfill { box-shadow: 0 0 0 1px var(--priority); }
 .tlav { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--surface-3); border: 1px solid var(--line); color: var(--dim); font: 600 0.692rem var(--mono); }
 .tlarrows { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1; }
 .tlarrows path { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+.tlarrows path.cp { stroke: var(--priority); }
+.tlarrows path.hot { stroke: var(--accent); stroke-width: 1.6; }
 .tlarrows marker path { fill: var(--muted); stroke: none; }
+.tlgroup { position: sticky; left: 0; }
 @media (max-width: 599px) {
   .tlgrid { min-width: 600px; }
   .tllane { grid-template-columns: 92px 1fr; }
