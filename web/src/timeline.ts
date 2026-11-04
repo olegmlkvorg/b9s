@@ -97,6 +97,11 @@ export function edges(bars: Bar[]): [string, string][] {
   return bars.flatMap(b => b.i.blocked_by.filter(x => x !== b.i.id && on.has(x)).map(x => [b.i.id, x] as [string, string]));
 }
 
+/** waitsOffView lists what an issue still waits on that has no bar here (out of the window or filtered out), so no arrow can reach it. */
+export function waitsOffView(i: Item, on: Set<string>): string[] {
+  return i.blocked_by.filter(x => { const b = get(x); return x !== i.id && !on.has(x) && !(b && eff(b) === "closed"); });
+}
+
 /** criticalPath is the chain of drawn, unclosed bars linked by blocks with the longest summed duration, earliest first; [] without links. */
 export function criticalPath(bars: Bar[]): string[] {
   const by = new Map(bars.map(b => [b.i.id, b]));
@@ -139,7 +144,8 @@ if (!WINDOWS.some(w => w.key === win)) win = "3d";
 export const setTimelineWindow = (k: string) => { if (WINDOWS.some(w => w.key === k)) { win = k as WindowKey; store.set("timelineWindow", k); } };
 
 const ROW = 26;
-let drawn: { edges: [string, string][]; crit: string[] } = { edges: [], crit: [] };
+let drawn: { edges: [string, string][]; crit: string[]; off: Map<string, string[]> } = { edges: [], crit: [], off: new Map() };
+let revealed: string | undefined;
 
 export function renderTimeline(): void {
   const v = $("#vTimeline"), now = Date.now();
@@ -147,6 +153,8 @@ export function renderTimeline(): void {
   const w = win === "fit" ? fitWindow(items, now) : WINDOWS.find(x => x.key === win)!;
   const lanes = layout(items, now, w.past, w.ahead, D.project.all);
   const bars = lanes.flatMap(l => l.bars), critPath = criticalPath(bars), crit = new Set(critPath), full = w.past + w.ahead, from = now - w.past;
+  const onView = new Set(bars.map(b => b.i.id)), off = new Map(bars.map(b => [b.i.id, waitsOffView(b.i, onView)]));
+  const offText = (id: string) => (off.get(id) || []).map(x => `\nwaits on ${shortId(x)} ${get(x)?.t || ""} (outside this view)`).join("");
   const pct = (x: number) => (x * 100).toFixed(3) + "%";
   const steps = [H, 2 * H, 6 * H, 12 * H, DAY, 2 * DAY, 7 * DAY, 14 * DAY];
   const every = steps.find(s => full / s <= (innerWidth < 600 ? 5 : 10)) || 30 * DAY; // a phone grid is 600 px wide: half the ticks
@@ -163,17 +171,17 @@ export function renderTimeline(): void {
     const fw = right ? (b.x1 - b.x0) / Math.max(b.x1, 1e-6) : (b.x1 - b.x0) / Math.max(1 - b.x0, 1e-6);
     // The label starts past a short fill, so the fill's pattern stays visible; on a long fill it starts at the bar, so it stays in view on a phone.
     const room = right ? b.x1 : 1 - b.x0, lead = b.x1 - b.x0 < room / 2 ? b.x1 - b.x0 : 0, nowAt = Math.min(1, Math.max(0, (w.past / full - b.x0) / Math.max(b.x1 - b.x0, 1e-6)));
-    return `<button class="tlbar s-${state}${right ? " rt" : ""}${b.live ? " live" : ""}${b.planned ? " planned" : ""}${b.approx ? " approx" : ""}${crit.has(b.i.id) ? " crit" : ""}" data-open="${esc(b.i.id)}" data-tl="${esc(b.i.id)}" title="${esc(`${b.i.t}\n${timeText(b.start, b.live ? now : b.end, b.live, b.approx)}`)}" aria-label="${esc(label)}"`
+    return `<button class="tlbar s-${state}${right ? " rt" : ""}${b.live ? " live" : ""}${b.planned ? " planned" : ""}${b.approx ? " approx" : ""}${crit.has(b.i.id) ? " crit" : ""}" data-open="${esc(b.i.id)}" data-tl="${esc(b.i.id)}" title="${esc(`${b.i.t}\n${timeText(b.start, b.live ? now : b.end, b.live, b.approx)}${offText(b.i.id)}`)}" aria-label="${esc(label)}"`
       + ` style="${place};top:${4 + row * ROW}px;--lead:${pct(lead)};--now:${pct(nowAt)}"><i class="tlfill" style="width:${pct(Math.min(1, fw))}"></i>${badgeHTML(b.i.assignee)}<span class="tllab"><span class="tlmk" aria-hidden="true">${STATES[state].g}</span><span class="t">${esc(b.i.t)}</span></span></button>`;
   };
   const head = `<div class="tlhead"><span class="tlwins" role="group" aria-label="Window">${WINDOWS.map(x => `<button class="chip${x.key === win ? " on" : ""}" data-tlwin="${x.key}" aria-pressed="${x.key === win}">${x.key}</button>`).join("")}</span>`
-    + `<span class="tlkey">${(Object.keys(STATES) as BarState[]).map(s => `<span class="s-${s}" data-tlstate="${s}"><i class="tlfill"></i><span class="tlmk" aria-hidden="true">${STATES[s].g}</span>${STATES[s].w}</span>`).join("")}<span><i class="tlk crit"></i>critical path</span><span>hover a bar: → waits on</span></span></div>`;
+    + `<span class="tlkey">${(Object.keys(STATES) as BarState[]).map(s => `<span class="s-${s}" data-tlstate="${s}"><i class="tlfill"></i><span class="tlmk" aria-hidden="true">${STATES[s].g}</span>${STATES[s].w}</span>`).join("")}<span><i class="tlk crit"></i>critical path</span><span>hover or open a bar: → waits on, ⇢ waits on something outside this view</span></span></div>`;
   if (!lanes.length) { v.innerHTML = head + `<div class="empty">Nothing started, closed or planned in this window. Planned work needs a due date.</div>`; return; }
   v.innerHTML = head + `<div class="scroll tlscroll"><div class="tlgrid"><div class="tllane tlaxis"><div class="tlwho"></div><div class="tltrack">${ticks.map(t => `<span style="left:${pct((t - from) / full)}">${esc(lab(t))}</span>`).join("")}</div></div>`
     + lanes.map((l, n) => (l.group !== lanes[n - 1]?.group ? `<div class="sec tlgroup">${esc(l.group)}</div>` : "")
       + `<div class="tllane"><div class="tlwho">${badgeHTML(l.owner)}<span>${esc(l.owner || "unassigned")}</span></div><div class="tltrack" style="height:${l.bars.length * ROW + 8}px">${grid}${l.bars.map(bar).join("")}</div></div>`).join("")
     + `</div></div>`;
-  drawn = { edges: edges(bars), crit: critPath };
+  drawn = { edges: edges(bars), crit: critPath, off };
   const open = S.detail?.stack[S.detail.stack.length - 1];
   drawArrows(v, open);
   if (!v.dataset.tlHover) {
@@ -181,6 +189,19 @@ export function renderTimeline(): void {
     const on = (e: Event) => { const b = (e.target as HTMLElement).closest<HTMLElement>("[data-tl]"); drawArrows(v, b?.dataset.tl || S.detail?.stack[S.detail.stack.length - 1]); };
     v.addEventListener("mouseover", on); v.addEventListener("focusin", on);
   }
+}
+
+/** After opening an issue, bring its label out from under the sticky owner column or past the far edge. Runs once per opened issue, so it never fights a swipe. */
+export function revealOpenBar(): void {
+  const id = S.detail?.stack[S.detail.stack.length - 1];
+  if (id === revealed) return;
+  revealed = id;
+  const v = $("#vTimeline"), box = v.querySelector<HTMLElement>(".tlscroll");
+  const label = id && box?.querySelector<HTMLElement>(`[data-tl="${CSS.escape(id)}"] .tllab`);
+  if (!box || !label) return;
+  const r = label.getBoundingClientRect(), b = box.getBoundingClientRect(), near = b.left + (box.querySelector<HTMLElement>(".tlwho")?.offsetWidth || 0) + 4;
+  if (r.left < near) box.scrollLeft -= near - r.left;
+  else if (r.right > b.right) box.scrollLeft += Math.min(r.right - b.right, r.left - near);
 }
 
 /** shownEdges are the critical path's links plus every link that touches focus. */
@@ -194,8 +215,8 @@ function drawArrows(v: HTMLElement, focus?: string): void {
   const grid = v.querySelector<HTMLElement>(".tlgrid");
   if (!grid) return;
   grid.querySelector(".tlarrows")?.remove();
-  const es = shownEdges(drawn.edges, drawn.crit, focus);
-  if (!es.length) return;
+  const es = shownEdges(drawn.edges, drawn.crit, focus), stub = focus && drawn.off.get(focus)?.length ? focus : "";
+  if (!es.length && !stub) return;
   const g = grid.getBoundingClientRect();
   const at = (id: string) => grid.querySelector<HTMLElement>(`[data-tl="${CSS.escape(id)}"] .tlfill`)?.getBoundingClientRect();
   const paths = es.flatMap(([waiter, on]) => {
@@ -204,5 +225,12 @@ function drawArrows(v: HTMLElement, focus?: string): void {
     const hot = waiter === focus || on === focus;
     return [`<path class="${hot ? "hot" : "cp"}" d="M${x1},${y1} C${mx},${y1} ${Math.min(mx, x2 - 8)},${y2} ${x2},${y2}" marker-end="url(#tlah)"/>`];
   });
+  // What the focused bar waits on has no bar here: a short dashed arrow into its start, kept clear of the sticky owner column.
+  const s = stub ? at(stub) : undefined;
+  if (s) {
+    const track = grid.querySelector(".tltrack")!.getBoundingClientRect().left - g.left, y = s.top + s.height / 2 - g.top;
+    const x1 = Math.max(track + 2, s.left - g.left - 26);
+    paths.push(`<path class="hot off" data-off="${esc(stub)}" d="M${x1},${y} L${x1 + 26},${y}" marker-end="url(#tlah)"/>`);
+  }
   grid.insertAdjacentHTML("beforeend", `<svg class="tlarrows" width="${g.width}" height="${g.height}" aria-hidden="true"><defs><marker id="tlah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L8,4L0,8z"/></marker></defs>${paths.join("")}</svg>`);
 }

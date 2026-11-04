@@ -151,3 +151,53 @@ test.describe("refresh", () => {
     expect(await page.locator("#treeList").evaluate(b => b.scrollTop)).toBe(300);
   });
 });
+
+test.describe("place and focus", () => {
+  // m-1 runs from before the window's middle to a far due date, so its label starts at the bar and a sideways scroll can hide it.
+  const many = Array.from({ length: 40 }, (_, n) => ({ id: `m-${n}`, title: `[${n}] A long enough item title ${n}`, status: "in_progress", assignee: n % 2 ? "bob" : "alice", ...(n === 1 ? { startedMinutesAgo: 1200, dueInMinutes: 3000 } : {}) }));
+  test.use({ fixture: { issues: [...many,
+    { id: "o-1", title: "[50] Far blocker with no dates", status: "open" },
+    { id: "o-2", title: "[51] Waits on far work", status: "in_progress", assignee: "bob", blockedBy: ["o-1"], startedMinutesAgo: 60 },
+  ] } });
+
+  test("a full reload keeps the timeline's scroll, and a fresh session does not", async ({ page, project }) => {
+    await open(page, project);
+    await page.locator('#bar [data-view="timeline"]').click();
+    const box = page.locator("#vTimeline .tlscroll");
+    await expect(box).toBeVisible();
+    await box.evaluate(b => { b.scrollTop = 300; });
+    await page.waitForFunction(() => (sessionStorage.getItem("b9s.scroll.timeline") || "").includes('"top":300'));
+    await page.reload();
+    await expect(page.locator("#vTimeline .tlscroll")).toBeVisible();
+    await expect.poll(() => page.locator("#vTimeline .tlscroll").evaluate(b => b.scrollTop)).toBe(300);
+    await page.evaluate(() => sessionStorage.clear());
+    await page.reload();
+    await expect(page.locator("#vTimeline .tlscroll")).toBeVisible();
+    expect(await page.locator("#vTimeline .tlscroll").evaluate(b => b.scrollTop)).toBe(0);
+  });
+
+  test("hovering a bar whose blocker has no bar draws the dashed stub and names the blocker", async ({ page, project }) => {
+    await open(page, project);
+    await page.locator('#bar [data-view="timeline"]').click();
+    const v = page.locator("#vTimeline"), bar = v.locator('[data-tl="o-2"]');
+    await expect(v.locator('[data-tl="o-1"]')).toHaveCount(0);
+    await expect(bar).toHaveAttribute("title", /waits on .*Far blocker.*outside this view/);
+    await bar.dispatchEvent("mouseover");
+    await expect(v.locator('.tlarrows path.off[data-off="o-2"]')).toHaveCount(1);
+  });
+
+  test("opening an item leaves its label clear of the owner column and the rows where they were", async ({ page, project }) => {
+    await open(page, project);
+    await page.locator('#bar [data-view="timeline"]').click();
+    const box = page.locator("#vTimeline .tlscroll"), v = page.locator("#vTimeline");
+    await expect(box).toBeVisible();
+    await box.evaluate(b => { b.scrollLeft = 400; });
+    if (page.viewportSize()!.width < 600) expect(await box.evaluate(b => b.scrollLeft)).toBeGreaterThan(100);
+    const top = await v.locator('[data-tl="m-1"]').evaluate(e => e.getBoundingClientRect().top);
+    await v.locator('[data-tl="m-1"]').dispatchEvent("click");
+    await expect(page.locator(".detail")).toHaveAttribute("data-id", "m-1");
+    const gap = await v.locator('[data-tl="m-1"] .tllab').evaluate(l => l.getBoundingClientRect().left - document.querySelector("#vTimeline .tlwho")!.getBoundingClientRect().right);
+    expect(gap).toBeGreaterThanOrEqual(0);
+    if (page.viewportSize()!.width >= 600) expect(await v.locator('[data-tl="m-1"]').evaluate(e => e.getBoundingClientRect().top)).toBe(top);
+  });
+});

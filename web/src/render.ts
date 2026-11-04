@@ -9,7 +9,7 @@ import { DEFAULT_CHIPS, PC, S, SORTS, chipRowVisible, laneHeight, matches, nextL
 import { syncHistory } from "./nav";
 import { renderMermaidBlocks } from "./mermaid";
 import { renderMemory, renderMemoryDetail } from "./memory";
-import { renderTimeline } from "./timeline";
+import { renderTimeline, revealOpenBar } from "./timeline";
 import { $, $opt, age, desktop, esc, fmtDate, md, sizeClass, split, store } from "./util";
 
 const metaSep = '<span class="msep">-</span>';
@@ -83,6 +83,21 @@ function restoreScroll(places: ReturnType<typeof scrollPlaces>): void {
   });
 }
 
+// A full reload keeps it too: each view's places live in sessionStorage, read back on the first render after the page loads.
+const placesKey = (view: string) => "b9s.scroll." + view;
+function savedPlaces(view: string): ReturnType<typeof scrollPlaces> {
+  try { return JSON.parse(sessionStorage.getItem(placesKey(view)) || "[]"); } catch { return []; }
+}
+let placesQueued = false;
+document.addEventListener("scroll", e => {
+  if (placesQueued || !(e.target instanceof HTMLElement) || !e.target.classList.contains("scroll")) return;
+  placesQueued = true;
+  requestAnimationFrame(() => {
+    placesQueued = false;
+    try { sessionStorage.setItem(placesKey(S.view), JSON.stringify(scrollPlaces())); } catch { /* storage is optional */ }
+  });
+}, { capture: true, passive: true });
+
 export function render(): void {
   if (!D.loaded) return;
   // Both reads come while the layout is still clean, so the reads inside the views below force none,
@@ -93,7 +108,7 @@ export function render(): void {
   const was = oldClass && oldClass !== nextClass && cachedDetailPlace && (!currentPlace || cachedDetailPlace.id === currentPlace.id)
     ? cachedDetailPlace
     : currentPlace;
-  const scrolled = S.view === placedView ? scrollPlaces() : [];
+  const scrolled = S.view === placedView ? scrollPlaces() : placedView ? [] : savedPlaces(S.view);
   placedView = S.view;
   renderHeader(); renderChips(); renderBar(); renderStale();
   (["tree", "board", "search", "more", "graph", "memory", "timeline"] as const).forEach(v => { $("#v" + v[0].toUpperCase() + v.slice(1)).hidden = S.view !== v; });
@@ -105,6 +120,7 @@ export function render(): void {
   if (S.view === "memory") renderMemory();
   if (S.view === "timeline") renderTimeline();
   restoreScroll(scrolled);
+  if (S.view === "timeline") revealOpenBar();
   renderDetail(was);
   syncQuery();
   syncHistory();
