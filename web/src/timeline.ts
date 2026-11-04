@@ -136,7 +136,7 @@ export function renderTimeline(): void {
   const bars = lanes.flatMap(l => l.bars), critPath = criticalPath(bars), crit = new Set(critPath), full = w.past + w.ahead, from = now - w.past;
   const pct = (x: number) => (x * 100).toFixed(3) + "%";
   const steps = [H, 2 * H, 6 * H, 12 * H, DAY, 2 * DAY, 7 * DAY, 14 * DAY];
-  const every = steps.find(s => full / s <= 10) || 30 * DAY;
+  const every = steps.find(s => full / s <= (innerWidth < 600 ? 5 : 10)) || 30 * DAY; // a phone grid is 600 px wide: half the ticks
   const ticks: number[] = []; for (let t = Math.ceil(from / every) * every; t <= from + full; t += every) ticks.push(t);
   const lab = (t: number) => new Date(t).toLocaleString(undefined, every < DAY ? { weekday: "short", hour: "2-digit", minute: "2-digit" } : { weekday: "short", day: "numeric", month: "short" });
   const grid = ticks.map(t => `<div class="tltick" style="left:${pct((t - from) / full)}"></div>`).join("") + (w.past <= full ? `<div class="tlnow" style="left:${pct(w.past / full)}"></div>` : "");
