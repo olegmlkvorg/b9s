@@ -148,7 +148,7 @@ export function renderTimeline(): void {
     const place = right ? `left:0;width:${pct(b.x1)}` : `left:${pct(b.x0)};width:${pct(1 - b.x0)}`;
     const fw = right ? (b.x1 - b.x0) / Math.max(b.x1, 1e-6) : (b.x1 - b.x0) / Math.max(1 - b.x0, 1e-6);
     return `<button class="tlbar${right ? " rt" : ""}${b.planned ? " planned" : ""}${b.approx ? " approx" : ""}${crit.has(b.i.id) ? " crit" : ""}" data-open="${esc(b.i.id)}" data-tl="${esc(b.i.id)}" title="${esc(label)}" aria-label="${esc(label)}"`
-      + ` style="${place};top:${4 + row * ROW}px;--c:${st.c}"><i class="tlfill" style="width:${pct(Math.min(1, fw))}"></i>${badgeHTML(b.i.assignee)}<span class="st" style="color:var(--c)" aria-hidden="true">${st.g}</span><span class="t">${esc(b.i.t)}</span></button>`;
+      + ` style="${place};top:${4 + row * ROW}px;--c:${st.c}"><i class="tlfill" style="width:${pct(Math.min(1, fw))}"></i>${badgeHTML(b.i.assignee)}<span class="st" style="--sc:var(--c)" aria-hidden="true"></span><span class="t">${esc(b.i.t)}</span></button>`;
   };
   const head = `<div class="tlhead"><span class="tlwins" role="group" aria-label="Window">${WINDOWS.map(x => `<button class="chip${x.key === win ? " on" : ""}" data-tlwin="${x.key}" aria-pressed="${x.key === win}">${x.key}</button>`).join("")}</span>`
     + `<span class="tlkey"><span><i class="tlk" style="--c:var(--cyan)"></i>in progress</span><span><i class="tlk" style="--c:var(--muted)"></i>closed</span><span><i class="tlk planned"></i>planned</span><span><i class="tlk crit"></i>critical path</span><span>hover a bar: → waits on</span></span></div>`;
