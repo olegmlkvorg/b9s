@@ -4,7 +4,7 @@
 
 import * as api from "./api";
 import type { Issue } from "./api.gen";
-import { D, ancestors, blocksOf, descendants, eff, get, isReady, kids, laneOf, openBlockers, pool, progress, projectOf, shortId, type Item } from "./data";
+import { D, ancestors, blocksOf, descendants, eff, get, isArchived, isReady, kids, laneOf, openBlockers, pool, progress, projectOf, shortId, type Item } from "./data";
 import { DEFAULT_CHIPS, PC, S, SORTS, chipRowVisible, laneHeight, matches, nextLaneHeight, queryString, stOf, textMatches, treeRows, tyOf, type LaneHeight, type TreeRow } from "./state";
 import { syncHistory } from "./nav";
 import { renderMermaidBlocks } from "./mermaid";
@@ -172,7 +172,8 @@ function renderChips(): void {
     + chip("d", "deferred", "Deferred", "var(--priority)", S.st.has("deferred"), cnt("deferred"))
     + chip("C", "closed", "Closed", "var(--muted)", S.st.has("closed"), cnt("closed"))
     + chip("r", "ready", "Ready", "var(--priority)", S.ready, counted.filter(isReady).length)
-    + chip("a", "all", "All", "var(--dim)", S.st.size === 0 && !S.ready, null);
+    + chip("a", "all", "All", "var(--dim)", S.st.size === 0 && !S.ready, null)
+    + chip("show archived", "archived", "Archived", "var(--muted)", D.showArchived, [...D.all.values()].filter(isArchived).length);
   h += `<span class="sep"></span>`;
   if (S.text.trim()) {
     const err = S.qres && S.qres.text === S.text && S.qres.error;

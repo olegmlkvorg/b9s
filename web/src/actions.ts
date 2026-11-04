@@ -264,6 +264,7 @@ function remember(v: string): void {
 }
 
 export function chipTap(k: string): void {
+  if (k === "archived") { D.showArchived = !D.showArchived; store.set("showArchived", D.showArchived); render(); return; }
   if (k === "all") { S.st.clear(); S.ready = false; }
   else if (k === "ready") S.ready = !S.ready;
   else if (S.st.has(k)) S.st.delete(k); else S.st.add(k);

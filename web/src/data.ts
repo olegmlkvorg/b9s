@@ -2,7 +2,7 @@
 // data; this module only indexes what the last snapshot said.
 
 import type { Health, Issue, Person, ProjectInfo, Snapshot } from "./api.gen";
-import { parseTime } from "./util";
+import { parseTime, store } from "./util";
 
 export interface Item extends Issue {
   /** title without the "[short-id] " prefix Beads titles carry */
@@ -22,6 +22,8 @@ export const D = {
   kids: new Map<string, string[]>(),
   blocks: new Map<string, string[]>(),
   loaded: false,
+  /** the Archived chip: pool() includes archived issues while it is on */
+  showArchived: store.get("showArchived", false),
   /** a server anyone may open: one project, no switching */
   public: false,
   /** the b9s build that serves this page; the bundle is embedded in it */
@@ -72,7 +74,9 @@ export function reindex(): void {
 
 export const get = (id: string): Item | undefined => D.all.get(id);
 export const kids = (id: string): string[] => D.kids.get(id) || [];
-export const pool = (): Item[] => [...D.all.values()];
+/** The house archives old closed work with this label (Assist bin/tracker-archive.ts). Every view leaves it out; get() still finds it. */
+export const isArchived = (i: Item): boolean => (i.labels || []).includes("archived");
+export const pool = (): Item[] => { const all = [...D.all.values()]; return D.showArchived ? all : all.filter(i => !isArchived(i)); };
 
 export function descendants(id: string, out: string[] = [], seen = new Set<string>()): string[] {
   for (const k of kids(id)) {

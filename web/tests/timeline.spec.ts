@@ -208,3 +208,19 @@ test.describe("place and focus", () => {
     if (page.viewportSize()!.width >= 600) expect(await v.locator('[data-tl="m-1"]').evaluate(e => e.getBoundingClientRect().top)).toBe(top);
   });
 });
+
+test.describe("archived", () => {
+  test.use({ fixture: { issues: [
+    { id: "t-1", title: "[1] Live work", status: "in_progress", assignee: "alice" },
+    { id: "t-4", title: "[4] Long done", status: "closed", assignee: "alice", labels: ["archived"] },
+  ] } });
+  test("an archived issue leaves the timeline and the tree until the Archived chip shows it", async ({ page, project }) => {
+    await open(page, project);
+    await page.locator('#bar [data-view="timeline"]').click();
+    const v = page.locator("#vTimeline");
+    await expect(v.locator('[data-tl="t-1"]')).toBeVisible();
+    await expect(v.locator('[data-tl="t-4"]')).toHaveCount(0);
+    await page.locator('[data-chip="archived"]').click();
+    await expect(v.locator('[data-tl="t-4"]')).toHaveCount(1);
+  });
+});

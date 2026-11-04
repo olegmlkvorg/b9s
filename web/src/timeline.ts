@@ -3,7 +3,7 @@
 // (started_at; else the planned start; else created, marked approximate) to closed, now, or the due date. A never-started issue
 // with a due date is planned and drawn outlined. The default window is 3d (a day back, two ahead); "fit" spans the open work. "blocks"
 // arrows are drawn for the critical path (the longest open chain) and for the hovered or opened issue only. The tree's text
-// query and project filter apply; status chips do not, since closed work belongs on a timeline. A bar opens the detail.
+// query and project filter apply; status chips do not, since closed work belongs on a timeline; archived issues stay out unless the Archived chip is on. A bar opens the detail.
 
 import { closedAs } from "./closeout";
 import { timeText } from "./timetext";
