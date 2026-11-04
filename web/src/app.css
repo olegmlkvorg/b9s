@@ -604,3 +604,8 @@
 .tlarrows { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1; }
 .tlarrows path { fill: none; stroke: var(--muted); stroke-width: 1.2; }
 .tlarrows marker path { fill: var(--muted); stroke: none; }
+@media (max-width: 599px) {
+  .tlgrid { min-width: 600px; }
+  .tllane { grid-template-columns: 92px 1fr; }
+  .tlwho { padding: 4px 6px; font-size: 0.923rem; }
+}
