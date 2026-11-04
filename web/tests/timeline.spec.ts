@@ -53,7 +53,7 @@ test.describe("arrows", () => {
     await page.locator('#bar [data-view="timeline"]').click();
     const v = page.locator("#vTimeline");
     await expect(v.locator('[data-tl="t-7"]')).toBeVisible();
-    await expect(v.locator(".tlarrows path.hot")).toHaveCount(0);
+    await expect(v.locator(".tlarrows > path")).toHaveCount(0);
     await v.locator('[data-tl="t-7"]').hover();
     await expect(v.locator(".tlarrows path.hot")).toHaveCount(1);
   });
