@@ -17,7 +17,7 @@ export const WINDOWS = [
   { key: "plan 7d", past: DAY, ahead: 7 * DAY }, { key: "plan 30d", past: 2 * DAY, ahead: 30 * DAY },
 ] as const;
 export type WindowKey = typeof WINDOWS[number]["key"];
-export const FIT_MIN = 12 * H, FIT_MAX = 60 * DAY;
+export const FIT_MIN = 12 * H, FIT_MAX = 45 * DAY;
 
 export interface Bar { i: Item; start: number; end: number; approx: boolean; live: boolean; planned: boolean; x0: number; x1: number }
 export interface Lane { group: string; owner: string; bars: Bar[] }
@@ -36,7 +36,8 @@ export function span(i: Item, now: number): Omit<Bar, "i" | "x0" | "x1"> | null 
   return { start, end: Math.max(start, end), approx: !real, live, planned: false };
 }
 
-/** fitWindow spans the unclosed work (and now), padded by a tenth each side, clamped to [FIT_MIN, FIT_MAX] and kept ending after now. */
+/** fitWindow starts a tenth before the earliest unclosed bar (or now) and ends a tenth after the latest, at least FIT_MIN long;
+ * past FIT_MAX it keeps the start, so the far-off due dates drop off the end rather than today's work off the start. */
 export function fitWindow(items: Item[], now: number): { past: number; ahead: number } {
   let lo = now, hi = now;
   for (const i of items) {
@@ -44,9 +45,8 @@ export function fitWindow(items: Item[], now: number): { past: number; ahead: nu
     const s = span(i, now); if (!s) continue;
     lo = Math.min(lo, s.start); hi = Math.max(hi, s.end);
   }
-  let full = Math.min(FIT_MAX, Math.max(FIT_MIN, (hi - lo) * 1.2));
-  let from = Math.max(lo - (full - (hi - lo)) / 2, hi + full * 0.1 - full);
-  if (from + full < now + full * 0.05) from = now + full * 0.05 - full;
+  const full = Math.min(FIT_MAX, Math.max(FIT_MIN, (hi - lo) * 1.2));
+  const from = Math.min(lo - (full - Math.min(full, hi - lo)) / 2, now - full * 0.05);
   return { past: now - from, ahead: from + full - now };
 }
 
