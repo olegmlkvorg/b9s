@@ -5,11 +5,24 @@
 // arrows are drawn for the critical path (the longest open chain) and for the hovered or opened issue only. The tree's text
 // query and project filter apply; status chips do not, since closed work belongs on a timeline. A bar opens the detail.
 
+import { closedAs } from "./closeout";
+import { timeText } from "./timetext";
 import { D, ancestors, eff, get, pool, projectOf, shortId, type Item } from "./data";
-import { S, stOf, textMatches } from "./state";
+import { S, textMatches } from "./state";
 import { $, esc, parseTime, store } from "./util";
 
 const H = 3600e3, DAY = 24 * H;
+/** The five states a bar shows, each with a shape and a mark as well as a colour. The legend renders from this table. */
+export const STATES = {
+  open: { g: "○", w: "open / planned" }, progress: { g: "●", w: "in progress" }, blocked: { g: "⊘", w: "blocked" },
+  done: { g: "✓", w: "done" }, rejected: { g: "✕", w: "closed, rejected" },
+} as const;
+export type BarState = keyof typeof STATES;
+/** barState reads an issue's state: closed splits by its close reason, and anything not moving or blocked is open. */
+export function barState(i: Item): BarState {
+  const s = eff(i);
+  return s === "closed" ? closedAs(i.close_reason) : s === "blocked" ? "blocked" : s === "in_progress" ? "progress" : "open";
+}
 /** past: how far back the window reaches; ahead: how far past now. "fit" is computed from the items (fitWindow). */
 export const WINDOWS = [
   { key: "fit", past: 0, ahead: 0 },
@@ -142,17 +155,19 @@ export function renderTimeline(): void {
   const grid = ticks.map(t => `<div class="tltick" style="left:${pct((t - from) / full)}"></div>`).join("") + (w.past <= full ? `<div class="tlnow" style="left:${pct(w.past / full)}"></div>` : "");
   const when = (t: number) => new Date(t).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const bar = (b: Bar, row: number) => {
-    const st = stOf(eff(b.i)), right = b.x0 > 0.62;
-    const label = `${shortId(b.i.id)} ${b.i.t}, ${b.i.assignee || "unassigned"}, ${b.planned ? "planned" : st.w}${crit.has(b.i.id) ? ", critical path" : ""}, ${b.approx ? "about " : ""}${when(b.start)} to ${b.live ? "now" : when(b.end)}`;
+    const state = barState(b.i), right = b.x0 > 0.62, word = b.planned && state === "open" ? "planned" : STATES[state].w;
+    const label = `${shortId(b.i.id)} ${b.i.t}, ${b.i.assignee || "unassigned"}, ${word}${state === "rejected" && b.i.close_reason ? ` (${b.i.close_reason})` : ""}${crit.has(b.i.id) ? ", critical path" : ""}, ${b.approx ? "about " : ""}${when(b.start)} to ${b.live ? "now" : when(b.end)}`;
     // The button reaches from the bar to the track's far edge (or, near the right, from the near edge to the bar), so the label
     // always has room; the fill inside is the bar itself, at least 6 px wide so a ten-minute item still shows.
     const place = right ? `left:0;width:${pct(b.x1)}` : `left:${pct(b.x0)};width:${pct(1 - b.x0)}`;
     const fw = right ? (b.x1 - b.x0) / Math.max(b.x1, 1e-6) : (b.x1 - b.x0) / Math.max(1 - b.x0, 1e-6);
-    return `<button class="tlbar${right ? " rt" : ""}${b.planned ? " planned" : ""}${b.approx ? " approx" : ""}${crit.has(b.i.id) ? " crit" : ""}" data-open="${esc(b.i.id)}" data-tl="${esc(b.i.id)}" title="${esc(label)}" aria-label="${esc(label)}"`
-      + ` style="${place};top:${4 + row * ROW}px;--c:${st.c}"><i class="tlfill" style="width:${pct(Math.min(1, fw))}"></i>${badgeHTML(b.i.assignee)}<span class="st" style="--sc:var(--c)" aria-hidden="true"></span><span class="t">${esc(b.i.t)}</span></button>`;
+    // The label starts past a short fill, so the fill's pattern stays visible; a long fill keeps half the button for the label.
+    const room = right ? b.x1 : 1 - b.x0, lead = Math.min(b.x1 - b.x0, room / 2), nowAt = Math.min(1, Math.max(0, (w.past / full - b.x0) / Math.max(b.x1 - b.x0, 1e-6)));
+    return `<button class="tlbar s-${state}${right ? " rt" : ""}${b.live ? " live" : ""}${b.planned ? " planned" : ""}${b.approx ? " approx" : ""}${crit.has(b.i.id) ? " crit" : ""}" data-open="${esc(b.i.id)}" data-tl="${esc(b.i.id)}" title="${esc(`${b.i.t}\n${timeText(b.start, b.live ? now : b.end, b.live, b.approx)}`)}" aria-label="${esc(label)}"`
+      + ` style="${place};top:${4 + row * ROW}px;--lead:${pct(lead)};--now:${pct(nowAt)}"><i class="tlfill" style="width:${pct(Math.min(1, fw))}"></i>${badgeHTML(b.i.assignee)}<span class="tllab"><span class="tlmk" aria-hidden="true">${STATES[state].g}</span><span class="t">${esc(b.i.t)}</span></span></button>`;
   };
   const head = `<div class="tlhead"><span class="tlwins" role="group" aria-label="Window">${WINDOWS.map(x => `<button class="chip${x.key === win ? " on" : ""}" data-tlwin="${x.key}" aria-pressed="${x.key === win}">${x.key}</button>`).join("")}</span>`
-    + `<span class="tlkey"><span><i class="tlk" style="--c:var(--cyan)"></i>in progress</span><span><i class="tlk" style="--c:var(--muted)"></i>closed</span><span><i class="tlk planned"></i>planned</span><span><i class="tlk crit"></i>critical path</span><span>hover a bar: → waits on</span></span></div>`;
+    + `<span class="tlkey">${(Object.keys(STATES) as BarState[]).map(s => `<span class="s-${s}" data-tlstate="${s}"><i class="tlfill"></i><span class="tlmk" aria-hidden="true">${STATES[s].g}</span>${STATES[s].w}</span>`).join("")}<span><i class="tlk crit"></i>critical path</span><span>hover a bar: → waits on</span></span></div>`;
   if (!lanes.length) { v.innerHTML = head + `<div class="empty">Nothing started, closed or planned in this window. Planned work needs a due date.</div>`; return; }
   v.innerHTML = head + `<div class="scroll tlscroll"><div class="tlgrid"><div class="tllane tlaxis"><div class="tlwho"></div><div class="tltrack">${ticks.map(t => `<span style="left:${pct((t - from) / full)}">${esc(lab(t))}</span>`).join("")}</div></div>`
     + lanes.map((l, n) => (l.group !== lanes[n - 1]?.group ? `<div class="sec tlgroup">${esc(l.group)}</div>` : "")

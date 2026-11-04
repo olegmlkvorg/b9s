@@ -25,6 +25,7 @@ export interface Issue {
   due: string;
   started_at: string;
   planned_start: string;
+  close_reason: string;
   summary: string;
   labels: string[];
   parent: string;

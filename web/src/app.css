@@ -581,7 +581,6 @@
 .tlkey { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 0.923rem; }
 .tlkey > span { display: inline-flex; align-items: center; gap: 5px; }
 .tlk { display: inline-block; width: 14px; height: 8px; border-radius: 2px; background: var(--c); }
-.tlk.planned { background: var(--transparent); border: 1px dashed var(--muted); }
 .tlk.crit { background: var(--transparent); border: 1px solid var(--priority); }
 .tlscroll { overflow: auto; }
 .tlgrid { position: relative; min-width: 720px; }
@@ -597,11 +596,29 @@
 .tlbar { position: absolute; height: 22px; display: flex; align-items: center; gap: 4px; padding: 0 4px; border: 0; border-radius: 4px; background: var(--transparent); color: var(--text); font: inherit; overflow: hidden; white-space: nowrap; cursor: pointer; z-index: 1; text-align: left; }
 .tlbar.rt { flex-direction: row-reverse; text-align: right; }
 .tlbar > * { position: relative; }
-.tlbar .tlfill { position: absolute; top: 2px; bottom: 2px; left: 0; min-width: 6px; border-radius: 3px; background: var(--bg3); border: 1px solid var(--line); border-left: 3px solid var(--c); }
+.tlfill { border-radius: 3px; border: 1px solid var(--c); background-clip: padding-box; }
+.tlbar .tlfill { position: absolute; top: 2px; bottom: 2px; left: 0; min-width: 8px; }
+.tlkey .tlfill { display: inline-block; width: 22px; height: 12px; }
+.s-open { --c: var(--muted); }
+.s-progress { --c: var(--accent); }
+.s-blocked { --c: var(--red); }
+.s-done { --c: var(--green); }
+.s-rejected { --c: var(--ghost); }
+.s-open .tlfill { background: var(--transparent); border-style: dashed; }
+.s-progress .tlfill { background: var(--c); }
+.tlbar.live .tlfill { background: linear-gradient(to right, var(--c) var(--now), var(--progress-soft) var(--now)); }
+.tlbar.live .tlfill::after { content: ""; position: absolute; top: -1px; bottom: -1px; left: var(--now); width: 2px; background: var(--text); }
+.s-blocked .tlfill { background: repeating-linear-gradient(45deg, var(--c) 0 3px, var(--transparent) 3px 6px); }
+.s-done .tlfill { background: var(--c); }
+.s-rejected .tlfill { background: linear-gradient(to bottom, var(--transparent) calc(50% - 1px), var(--c) calc(50% - 1px) calc(50% + 1px), var(--transparent) calc(50% + 1px)); }
+.tlmk { color: var(--c); font-weight: 700; }
+.tllab { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0 4px; border-radius: 3px; background: var(--bg); }
+.tlbar { padding-left: calc(var(--lead) + 10px); }
+.tlbar.rt { padding-left: 4px; padding-right: calc(var(--lead) + 10px); }
+.s-rejected .t { color: var(--muted); text-decoration: line-through; }
 .tlbar.rt .tlfill { left: auto; right: 0; }
 .tlbar:hover, .tlbar:focus-visible { background: var(--hover); outline: 1px solid var(--accent); }
 .tlbar .t { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.tlbar.planned .tlfill { background: var(--transparent); border-style: dashed; }
 .tlbar.approx .tlfill { border-left-style: dotted; }
 .tlbar.crit .tlfill { box-shadow: 0 0 0 1px var(--priority); }
 .tlav { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--surface-3); border: 1px solid var(--line); color: var(--dim); font: 600 0.692rem var(--mono); }

@@ -76,3 +76,78 @@ test.describe("rows", () => {
     for (let k = 1; k < r.length; k++) expect(r[k][0]).toBeGreaterThanOrEqual(r[k - 1][1] - 0.5);
   });
 });
+
+test.describe("states", () => {
+  const WIDE = { startedMinutesAgo: 1000, updatedMinutesAgo: 30 };
+  test.use({ fixture: { issues: [
+    { id: "t-o", title: "[o] Planned", assignee: "cara", dueInMinutes: 2000 },
+    { id: "t-p", title: "[p] Moving", status: "in_progress", assignee: "cara", startedMinutesAgo: 1000 },
+    { id: "t-b", title: "[b] Stuck", status: "in_progress", assignee: "cara", blockedBy: ["t-o"], ...WIDE },
+    { id: "t-d", title: "[d] Finished", status: "closed", closeReason: "landed abc123", assignee: "cara", ...WIDE },
+    { id: "t-r", title: "[r] Dropped", status: "closed", closeReason: "superseded by t-d", assignee: "cara", ...WIDE },
+  ] } });
+  const CASES = [["t-o", "s-open", "○"], ["t-p", "s-progress", "●"], ["t-b", "s-blocked", "⊘"], ["t-d", "s-done", "✓"], ["t-r", "s-rejected", "✕"]] as const;
+
+  test("each bar carries its state and mark, the legend shows the same five, and a rejected title is struck", async ({ page, project }) => {
+    await open(page, project);
+    await page.locator('#bar [data-view="timeline"]').click();
+    const v = page.locator("#vTimeline");
+    for (const [id, cls, mark] of CASES) {
+      await expect(v.locator(`[data-tl="${id}"]`)).toHaveClass(new RegExp(cls));
+      await expect(v.locator(`[data-tl="${id}"] .tlmk`)).toHaveText(mark);
+      await expect(v.locator(`.tlkey .${cls} .tlmk`)).toHaveText(mark);
+    }
+    await expect(v.locator('[data-tl="t-r"] .t')).toHaveCSS("text-decoration-line", "line-through");
+    await expect(v.locator('[data-tl="t-d"] .t')).not.toHaveCSS("text-decoration-line", "line-through");
+    await expect(v.locator('[data-tl="t-d"]')).toHaveAttribute("title", /^Finished\n\S+.*, \d+ (h|min)/);
+    expect((await v.locator('[data-tl="t-d"]').getAttribute("title"))!.split("\n")).toHaveLength(2);
+    expect(await v.locator('[data-tl="t-d"]').getAttribute("title")).not.toMatch(/cara|done|t-d/);
+    await expect(v.locator('[data-tl="t-r"]')).toHaveAttribute("aria-label", /closed, rejected \(superseded by t-d\)/);
+  });
+
+  // In grayscale, so a pair that differs only by hue fails. The legend swatches are one size, so pixels compare directly.
+  test("the five swatches differ pixel by pixel with colour removed", async ({ page, project }) => {
+    await open(page, project);
+    await page.locator('#bar [data-view="timeline"]').click();
+    await page.addStyleTag({ content: "#vTimeline { filter: grayscale(1); }" });
+    const shots: string[] = [];
+    for (const [, cls] of CASES) shots.push((await page.locator(`#vTimeline .tlkey .${cls} .tlfill`).screenshot()).toString("base64"));
+    const px = await page.evaluate(async list => Promise.all(list.map(async b64 => {
+      const im = new Image(); im.src = "data:image/png;base64," + b64; await im.decode();
+      const c = document.createElement("canvas"); c.width = 22; c.height = 12;
+      const g = c.getContext("2d")!; g.drawImage(im, 0, 0, 22, 12);
+      return Array.from(g.getImageData(0, 0, 22, 12).data).filter((_, k) => k % 4 === 0);
+    })), shots);
+    for (let a = 0; a < px.length; a++) for (let b = a + 1; b < px.length; b++) {
+      const mean = px[a].reduce((s, x, k) => s + Math.abs(x - px[b][k]), 0) / px[a].length;
+      expect(mean, `${CASES[a][1]} vs ${CASES[b][1]}`).toBeGreaterThan(8);
+    }
+  });
+});
+
+test.describe("refresh", () => {
+  const LIST = Array.from({ length: 60 }, (_, n) => ({ id: `t-${n}`, title: `[${n}] Item ${n}`, status: "in_progress", assignee: `who${n}`, startedMinutesAgo: 300 }));
+  test.use({ fixture: { issues: LIST } });
+  const box = '#vTimeline .tlscroll';
+
+  test("an outside write keeps the timeline's scroll and the open item", async ({ page, project }) => {
+    await open(page, project);
+    await page.locator('#bar [data-view="timeline"]').click();
+    await page.locator(box).evaluate(b => { b.scrollTop = 400; });
+    await page.locator('[data-tl="t-20"]').evaluate(b => (b as HTMLElement).click());
+    await expect(page.locator("#detailHost")).toContainText("Item 20");
+    await page.locator(box).evaluate(b => { b.scrollTop = 400; });
+    project.writeIssues([...LIST, { id: "t-new", title: "[new] Arrived", status: "in_progress", assignee: "zed", startedMinutesAgo: 300 }]);
+    await expect(page.locator('[data-tl="t-new"]')).toHaveCount(1, { timeout: 10000 });
+    expect(await page.locator(box).evaluate(b => b.scrollTop)).toBe(400);
+    await expect(page.locator("#detailHost")).toContainText("Item 20");
+  });
+
+  test("the tree keeps its place through an outside write", async ({ page, project }) => {
+    await open(page, project);
+    await page.locator("#treeList").evaluate(b => { b.scrollTop = 300; });
+    project.writeIssues([...LIST, { id: "t-new", title: "[new] Arrived", status: "in_progress", assignee: "zed", startedMinutesAgo: 300 }]);
+    await expect(page.locator("#treeRows")).toContainText("Arrived", { timeout: 10000 });
+    expect(await page.locator("#treeList").evaluate(b => b.scrollTop)).toBe(300);
+  });
+});

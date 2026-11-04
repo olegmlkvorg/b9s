@@ -33,7 +33,9 @@ export function toJSONL(list: FixtureIssue[]): string {
     return JSON.stringify({
       id: f.id, title: f.title, description: f.description || "", status: f.status || "open", priority: f.priority ?? 2,
       issue_type: f.type || "task", assignee: f.assignee || "", created_at: t, updated_at: t,
-      ...(f.status === "closed" ? { closed_at: t } : {}), labels: f.labels || [], dependencies: deps,
+      ...(f.status === "closed" ? { closed_at: t } : {}), ...(f.closeReason ? { close_reason: f.closeReason } : {}),
+      ...(f.startedMinutesAgo ? { started_at: new Date(base - f.startedMinutesAgo * 60000).toISOString() } : {}),
+      ...(f.dueInMinutes ? { due_date: new Date(base + f.dueInMinutes * 60000).toISOString() } : {}), labels: f.labels || [], dependencies: deps,
       comments: (f.comments || []).map((c, k) => ({ id: `${f.id}-c${k}`, issue_id: f.id, author: "alice", text: c, created_at: t })),
     });
   }).join("\n") + "\n";

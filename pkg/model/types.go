@@ -35,6 +35,8 @@ type Issue struct {
 	// work began. Both feed the web timeline and load apart from the main
 	// query (internal/datasource/schedule.go), so an older schema loses neither.
 	StartedAt    *time.Time `json:"started_at,omitempty"`
+	// CloseReason is bd's close_reason; the web timeline derives done or rejected from it.
+	CloseReason  string     `json:"close_reason,omitempty"`
 	PlannedStart *time.Time `json:"planned_start,omitempty"`
 	ExternalRef       *string       `json:"external_ref,omitempty"`
 	CompactionLevel   int           `json:"compaction_level,omitempty"`

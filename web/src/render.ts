@@ -71,6 +71,18 @@ export function rowHTML(r: TreeRow, flat = false): string {
 
 /* ================= shell ================= */
 
+// A refresh keeps the reader's place: a view that rebuilds its scroll box (timeline, graph) gets the offsets back. Boxes match by
+// their order in the view, and a change of view starts at the new view's own place.
+let placedView = "";
+const viewScrollers = () => document.querySelectorAll<HTMLElement>(`#v${S.view[0].toUpperCase() + S.view.slice(1)} .scroll`);
+const scrollPlaces = () => [...viewScrollers()].map(b => ({ key: b.id || b.className, top: b.scrollTop, left: b.scrollLeft }));
+function restoreScroll(places: ReturnType<typeof scrollPlaces>): void {
+  viewScrollers().forEach((b, n) => {
+    const p = places[n];
+    if (p && p.key === (b.id || b.className) && (b.scrollTop !== p.top || b.scrollLeft !== p.left)) { b.scrollTop = p.top; b.scrollLeft = p.left; }
+  });
+}
+
 export function render(): void {
   if (!D.loaded) return;
   // Both reads come while the layout is still clean, so the reads inside the views below force none,
@@ -81,6 +93,8 @@ export function render(): void {
   const was = oldClass && oldClass !== nextClass && cachedDetailPlace && (!currentPlace || cachedDetailPlace.id === currentPlace.id)
     ? cachedDetailPlace
     : currentPlace;
+  const scrolled = S.view === placedView ? scrollPlaces() : [];
+  placedView = S.view;
   renderHeader(); renderChips(); renderBar(); renderStale();
   (["tree", "board", "search", "more", "graph", "memory", "timeline"] as const).forEach(v => { $("#v" + v[0].toUpperCase() + v.slice(1)).hidden = S.view !== v; });
   if (S.view === "tree") renderTree();
@@ -90,6 +104,7 @@ export function render(): void {
   if (S.view === "graph") renderGraph();
   if (S.view === "memory") renderMemory();
   if (S.view === "timeline") renderTimeline();
+  restoreScroll(scrolled);
   renderDetail(was);
   syncQuery();
   syncHistory();

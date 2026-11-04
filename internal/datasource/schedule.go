@@ -10,15 +10,16 @@ import (
 )
 
 // scheduleQueries run in order until one succeeds. Older bd schemas lack
-// metadata, and the oldest lack started_at too; like creators, the schedule
+// close_reason or metadata, and the oldest lack started_at too; like creators, the schedule
 // loads apart from the main query so a missing column costs only itself.
 var scheduleQueries = []string{
-	`SELECT id, started_at, metadata FROM issues`,
-	`SELECT id, started_at, NULL FROM issues`,
+	`SELECT id, started_at, metadata, close_reason FROM issues`,
+	`SELECT id, started_at, metadata, NULL FROM issues`,
+	`SELECT id, started_at, NULL, NULL FROM issues`,
 }
 
-// applySchedule fills StartedAt and PlannedStart (metadata.planned_start, an
-// RFC 3339 time or a YYYY-MM-DD date) for the web timeline. A schema without
+// applySchedule fills StartedAt, CloseReason and PlannedStart (metadata.planned_start,
+// an RFC 3339 time or a YYYY-MM-DD date) for the web timeline. A schema without
 // the columns, or metadata that is not a JSON object, leaves the issue unchanged.
 func applySchedule(db *sql.DB, issues []model.Issue) {
 	if len(issues) == 0 {
@@ -38,8 +39,8 @@ func applySchedule(db *sql.DB, issues []model.Issue) {
 		for rows.Next() {
 			var id string
 			var started sql.NullTime
-			var meta sql.NullString
-			if err := rows.Scan(&id, &started, &meta); err != nil {
+			var meta, reason sql.NullString
+			if err := rows.Scan(&id, &started, &meta, &reason); err != nil {
 				continue
 			}
 			i, ok := index[id]
@@ -51,6 +52,7 @@ func applySchedule(db *sql.DB, issues []model.Issue) {
 				issues[i].StartedAt = &t
 			}
 			issues[i].PlannedStart = PlannedStart(meta.String)
+			issues[i].CloseReason = reason.String
 		}
 		return
 	}

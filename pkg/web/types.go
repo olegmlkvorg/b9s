@@ -75,6 +75,8 @@ type Issue struct {
 	// when work began, and the start a planner set (metadata.planned_start).
 	StartedAt    string `json:"started_at"`
 	PlannedStart string `json:"planned_start"`
+	// CloseReason is why a closed issue closed; the timeline tells done from rejected by it.
+	CloseReason string `json:"close_reason"`
 	// Summary is the first sentence of an epic's description, for the board's
 	// epic cell. A snapshot keeps it while it drops Description.
 	Summary        string   `json:"summary"`

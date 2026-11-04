@@ -9,8 +9,8 @@ import (
 
 func TestApplySchedule_FillsStartedAndPlannedStart(t *testing.T) {
 	db := openCreatorsDB(t,
-		`CREATE TABLE issues (id TEXT, started_at DATETIME, metadata TEXT)`,
-		`INSERT INTO issues VALUES ('bd-1', '2026-11-04 07:45:04', '{"planned_start":"2026-11-05T09:00:00Z"}'), ('bd-2', NULL, '{}'), ('bd-3', NULL, 'not json')`,
+		`CREATE TABLE issues (id TEXT, started_at DATETIME, metadata TEXT, close_reason TEXT)`,
+		`INSERT INTO issues VALUES ('bd-1', '2026-11-04 07:45:04', '{"planned_start":"2026-11-05T09:00:00Z"}', 'superseded by bd-2'), ('bd-2', NULL, '{}', NULL), ('bd-3', NULL, 'not json', NULL)`,
 	)
 	issues := []model.Issue{{ID: "bd-1"}, {ID: "bd-2"}, {ID: "bd-3", Title: "kept"}}
 
@@ -21,6 +21,9 @@ func TestApplySchedule_FillsStartedAndPlannedStart(t *testing.T) {
 	}
 	if issues[0].PlannedStart == nil || issues[0].PlannedStart.Format(time.RFC3339) != "2026-11-05T09:00:00Z" {
 		t.Errorf("bd-1 PlannedStart = %v", issues[0].PlannedStart)
+	}
+	if issues[0].CloseReason != "superseded by bd-2" || issues[1].CloseReason != "" {
+		t.Errorf("CloseReason = %q, %q", issues[0].CloseReason, issues[1].CloseReason)
 	}
 	if issues[1].StartedAt != nil || issues[1].PlannedStart != nil || issues[2].PlannedStart != nil || issues[2].Title != "kept" {
 		t.Errorf("bd-2/bd-3 should have no schedule: %+v %+v", issues[1], issues[2])
