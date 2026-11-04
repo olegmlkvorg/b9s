@@ -9,6 +9,7 @@ import {
 } from "./actions";
 import { adoptCursor, onKey } from "./keys";
 import { memoryBack } from "./memory";
+import { setTimelineWindow } from "./timeline";
 import { canGoBack } from "./nav";
 import { appW, colOf, ensureVisible, fullH, halfH, markCellEdges, openCols, railShown, render, renderBoard, renderSearch, revealBoardCursor, siblings } from "./render";
 import { S, chipRowVisible, stepLanes } from "./state";
@@ -476,6 +477,8 @@ function bindClicks(): void {
     if (c) { chipTap(c.dataset.chip!); return; }
     const hdr = t.closest<HTMLElement>("[data-hdr]");
     if (hdr) { const k = hdr.dataset.hdr!; if (S.folded.has(k)) S.folded.delete(k); else S.folded.add(k); render(); return; }
+    const tw = t.closest<HTMLElement>("[data-tlwin]");
+    if (tw) { setTimelineWindow(tw.dataset.tlwin!); render(); return; }
     const cr = t.closest<HTMLElement>("[data-crumb]");
     if (cr) { S.graph = S.graph.slice(0, +cr.dataset.crumb! + 1); render(); return; }
     const op = t.closest<HTMLElement>("[data-open]");

@@ -30,6 +30,12 @@ type Issue struct {
 	DueDate           *time.Time    `json:"due_date,omitempty"`
 	DeferUntil        *time.Time    `json:"defer_until,omitempty"`
 	ClosedAt          *time.Time    `json:"closed_at,omitempty"`
+	// StartedAt is when the issue first went in progress (bd's started_at);
+	// PlannedStart is metadata.planned_start, the start a planner set before
+	// work began. Both feed the web timeline and load apart from the main
+	// query (internal/datasource/schedule.go), so an older schema loses neither.
+	StartedAt    *time.Time `json:"started_at,omitempty"`
+	PlannedStart *time.Time `json:"planned_start,omitempty"`
 	ExternalRef       *string       `json:"external_ref,omitempty"`
 	CompactionLevel   int           `json:"compaction_level,omitempty"`
 	CompactedAt       *time.Time    `json:"compacted_at,omitempty"`
@@ -83,6 +89,14 @@ func (i Issue) Clone() Issue {
 	if i.ClosedAt != nil {
 		v := *i.ClosedAt
 		clone.ClosedAt = &v
+	}
+	if i.StartedAt != nil {
+		v := *i.StartedAt
+		clone.StartedAt = &v
+	}
+	if i.PlannedStart != nil {
+		v := *i.PlannedStart
+		clone.PlannedStart = &v
 	}
 	if i.DueDate != nil {
 		v := *i.DueDate

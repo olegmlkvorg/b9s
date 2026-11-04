@@ -207,6 +207,7 @@ func (r *SQLiteReader) LoadIssuesFiltered(filter func(*model.Issue) bool) ([]mod
 	}
 
 	applyCreators(r.db, issues)
+	applySchedule(r.db, issues)
 	return issues, commentsErr
 }
 
@@ -283,6 +284,7 @@ func (r *SQLiteReader) loadIssuesSimple(filter func(*model.Issue) bool) ([]model
 	}
 
 	applyCreators(r.db, issues)
+	applySchedule(r.db, issues)
 	return issues, commentsErr
 }
 

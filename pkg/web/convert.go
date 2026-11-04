@@ -57,6 +57,8 @@ func convertIssue(src *model.Issue, status map[string]model.Status) Issue {
 		ClosedAt:       formatTimePtr(src.ClosedAt),
 		DeferUntil:     formatTimePtr(src.DeferUntil),
 		Due:            formatTimePtr(src.DueDate),
+		StartedAt:      formatTimePtr(src.StartedAt),
+		PlannedStart:   formatTimePtr(src.PlannedStart),
 		Labels:         nonNil(src.Labels),
 		BlockedBy:      []string{},
 		Related:        []string{},

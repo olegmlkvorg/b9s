@@ -826,6 +826,7 @@ export async function act(a: string): Promise<void> {
     case "closedmore": S.board.closedLimit += 50; renderBoard(); break;
     case "treeopts": openSheet("treeopts"); break;
     case "graph": S.graph = []; S.view = "graph"; render(); break;
+    case "timeline": S.view = "timeline"; render(); break;
     case "togglechips": S.chips = !S.chips; store.set("chipRow", S.chips); render(); break;
     case "pairing": openSheet("pairing"); break;
     case "log": openSheet("log"); break;

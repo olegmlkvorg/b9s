@@ -174,6 +174,7 @@ func (r *DoltReader) LoadIssuesFiltered(filter func(*model.Issue) bool) ([]model
 		debug.Log("dolt: comments unavailable, issues will report no comments: %v", commentsErr)
 	}
 	applyCreators(r.db, issues)
+	applySchedule(r.db, issues)
 
 	var result []model.Issue
 	for i := range issues {
@@ -274,6 +275,7 @@ func (r *DoltReader) loadIssuesSimple(filter func(*model.Issue) bool) ([]model.I
 	}
 
 	applyCreators(r.db, issues)
+	applySchedule(r.db, issues)
 
 	// The simple fallback must load comments too, and report a failure
 	// rather than silently returning nil error with no comments at all

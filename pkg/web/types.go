@@ -71,6 +71,10 @@ type Issue struct {
 	ClosedAt        string            `json:"closed_at"`
 	DeferUntil      string            `json:"defer_until"`
 	Due             string            `json:"due"`
+	// StartedAt and PlannedStart place the issue on the timeline view:
+	// when work began, and the start a planner set (metadata.planned_start).
+	StartedAt    string `json:"started_at"`
+	PlannedStart string `json:"planned_start"`
 	// Summary is the first sentence of an epic's description, for the board's
 	// epic cell. A snapshot keeps it while it drops Description.
 	Summary        string   `json:"summary"`

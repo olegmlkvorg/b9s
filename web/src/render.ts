@@ -9,6 +9,7 @@ import { DEFAULT_CHIPS, PC, S, SORTS, chipRowVisible, laneHeight, matches, nextL
 import { syncHistory } from "./nav";
 import { renderMermaidBlocks } from "./mermaid";
 import { renderMemory, renderMemoryDetail } from "./memory";
+import { renderTimeline } from "./timeline";
 import { $, $opt, age, desktop, esc, fmtDate, md, sizeClass, split, store } from "./util";
 
 const metaSep = '<span class="msep">-</span>';
@@ -81,13 +82,14 @@ export function render(): void {
     ? cachedDetailPlace
     : currentPlace;
   renderHeader(); renderChips(); renderBar(); renderStale();
-  (["tree", "board", "search", "more", "graph", "memory"] as const).forEach(v => { $("#v" + v[0].toUpperCase() + v.slice(1)).hidden = S.view !== v; });
+  (["tree", "board", "search", "more", "graph", "memory", "timeline"] as const).forEach(v => { $("#v" + v[0].toUpperCase() + v.slice(1)).hidden = S.view !== v; });
   if (S.view === "tree") renderTree();
   if (S.view === "board") renderBoard();
   if (S.view === "search") renderSearch();
   if (S.view === "more") renderMore();
   if (S.view === "graph") renderGraph();
   if (S.view === "memory") renderMemory();
+  if (S.view === "timeline") renderTimeline();
   renderDetail(was);
   syncQuery();
   syncHistory();
@@ -176,7 +178,7 @@ function renderBar(): void {
     const on = S.view === v || (v === "more" && S.view === "graph");
     return `<button class="${on ? "on" : ""}" data-view="${v}" aria-current="${on ? "page" : "false"}"><span class="g" aria-hidden="true">${g}</span>${l}</button>`;
   };
-  el.innerHTML = brand + tab("tree", "≣", "Tree") + tab("board", "▥", "Board") + tab("memory", "◇", "Memory") + tab("search", "⌕", "Search") + tab("more", "⋯", "More") + foot;
+  el.innerHTML = brand + tab("tree", "≣", "Tree") + tab("board", "▥", "Board") + tab("memory", "◇", "Memory") + tab("timeline", "═", "Timeline") + tab("search", "⌕", "Search") + tab("more", "⋯", "More") + foot;
 }
 
 export function renderStale(): void {
@@ -718,6 +720,7 @@ function renderMore(): void {
     + it("health", "●", "Data source health", "source · watcher · fallbacks (D)", h ? (h.ok ? "ok" : "problem") : "…", !!h && h.ok)
     + it("identity", "@", "Acting as", "author of your issues and comments", D.actor || "unknown")
     + `<div class="sec">Views</div>`
+    + it("timeline", "═", "Timeline", "who worked on what, when, and what waits on what", null)
     + it("graph", "⋔", "Dependency graph", "blocked-by and blocks from the cursor", null)
     + it("treeopts", "≣", "Tree options", "sort, columns, wrap, text size, expand and collapse all", null)
     + it("boardopts", "▥", "Board options", "group, epic lanes, folded columns", S.board.group)

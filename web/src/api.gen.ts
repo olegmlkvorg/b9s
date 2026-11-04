@@ -23,6 +23,8 @@ export interface Issue {
   closed_at: string;
   defer_until: string;
   due: string;
+  started_at: string;
+  planned_start: string;
   summary: string;
   labels: string[];
   parent: string;

@@ -571,3 +571,36 @@
   .issueMemoryLink summary { cursor: pointer; line-height: 1.7; }
   .issueMemoryLink summary span { color: var(--dim); font-size: .85rem; }
   .issueMemoryLink small { overflow-wrap: anywhere; color: var(--dim); }
+
+/* ================= timeline ================= */
+#vTimeline { display: flex; flex-direction: column; min-height: 0; }
+#vTimeline[hidden] { display: none; }
+.tlhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 12px; border-bottom: 1px solid var(--line-soft); }
+.tlwins { display: flex; gap: 6px; }
+.tlwins .chip.on { color: var(--text); border-color: var(--accent); background: var(--selected); }
+.tlkey { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 0.923rem; }
+.tlkey > span { display: inline-flex; align-items: center; gap: 5px; }
+.tlk { display: inline-block; width: 14px; height: 8px; border-radius: 2px; background: var(--c); }
+.tlk.planned { background: var(--transparent); border: 1px dashed var(--muted); }
+.tlk.crit { background: var(--transparent); border: 1px solid var(--priority); }
+.tlscroll { overflow: auto; }
+.tlgrid { position: relative; min-width: 720px; }
+.tllane { display: grid; grid-template-columns: 140px 1fr; border-bottom: 1px solid var(--line-soft); }
+.tlwho { display: flex; align-items: center; gap: 6px; padding: 4px 8px; color: var(--dim); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; position: sticky; left: 0; background: var(--bg); z-index: 2; }
+.tlwho > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.tltrack { position: relative; min-height: 38px; }
+.tlaxis .tltrack { height: 24px; min-height: 0; }
+.tlaxis .tltrack span { position: absolute; top: 4px; transform: translateX(2px); color: var(--muted); font-size: 0.846rem; white-space: nowrap; font-family: var(--mono); }
+.tltick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-soft); }
+.tlnow { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); z-index: 1; }
+.tlgroup { padding: 10px 12px 4px; }
+.tlbar { position: absolute; height: 26px; display: flex; align-items: center; gap: 4px; padding: 0 6px; border: 1px solid var(--line); border-left: 3px solid var(--c); border-radius: 4px; background: var(--bg3); color: var(--text); font: inherit; overflow: hidden; white-space: nowrap; cursor: pointer; z-index: 1; text-align: left; }
+.tlbar:hover, .tlbar:focus-visible { background: var(--hover); outline: 1px solid var(--accent); }
+.tlbar .t { overflow: hidden; text-overflow: ellipsis; }
+.tlbar.planned { background: var(--transparent); border-style: dashed; }
+.tlbar.approx { border-left-style: dotted; }
+.tlbar.crit { box-shadow: 0 0 0 1px var(--priority); }
+.tlav { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--surface-3); border: 1px solid var(--line); color: var(--dim); font: 600 0.692rem var(--mono); }
+.tlarrows { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1; }
+.tlarrows path { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+.tlarrows marker path { fill: var(--muted); stroke: none; }
