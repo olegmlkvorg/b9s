@@ -294,7 +294,9 @@ test.describe("groups", () => {
     await key(v, "2 blocked").click();
     await expect(v.locator('[data-tl="b1"]')).toHaveCount(0);
     await expect(key(v, "2 blocked")).toHaveClass(/crit/);
-    await v.locator(".tlhead").dispatchEvent("mouseover"); // nothing focused, so only the critical path is drawn
+    await page.mouse.move(0, 0); // nothing focused, so only the critical path is drawn
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await v.locator(".tlhead").dispatchEvent("mouseover");
     await expect(v.locator(".tlarrows path.cp")).toHaveCount(1);
   });
 });
