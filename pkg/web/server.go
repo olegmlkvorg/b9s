@@ -9,7 +9,9 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -132,6 +134,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/health", s.paired(s.handleHealth))
 	s.mux.HandleFunc("GET /api/events", s.paired(s.handleEvents))
 	s.mux.HandleFunc("GET /api/projects", s.paired(s.handleProjects))
+	s.mux.HandleFunc("GET /api/timeline-groups", s.paired(s.handleTimelineGroups))
 	s.mux.HandleFunc("POST /api/projects/open", s.paired(s.csrf(s.handleOpenProject)))
 	s.mux.HandleFunc("POST /api/reload", s.paired(s.csrf(s.limited(s.handleReload))))
 	s.mux.HandleFunc("POST /api/write", s.paired(s.csrf(s.limited(s.handleWrite))))
@@ -314,6 +317,28 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 		entries = append(entries, entry)
 	}
 	writeJSON(w, r, ProjectList{Projects: entries})
+}
+
+// handleTimelineGroups serves the groups files beside the workspace (or in
+// B9S_TIMELINE_GROUPS), one per project, written by the house's grouping job.
+// A missing directory or an unreadable file means no plan, so the Timeline
+// falls back to its own grouping. A public server shows none.
+func (s *Server) handleTimelineGroups(w http.ResponseWriter, r *http.Request) {
+	plans := []json.RawMessage{}
+	dir := os.Getenv("B9S_TIMELINE_GROUPS")
+	if dir == "" {
+		dir = ".timeline-groups"
+	}
+	names, _ := filepath.Glob(filepath.Join(dir, "*.json"))
+	for _, name := range names {
+		if s.opts.Public {
+			break
+		}
+		if data, err := os.ReadFile(name); err == nil && json.Valid(data) {
+			plans = append(plans, data)
+		}
+	}
+	writeJSON(w, r, map[string][]json.RawMessage{"plans": plans})
 }
 
 func (s *Server) handleOpenProject(w http.ResponseWriter, r *http.Request) {

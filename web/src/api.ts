@@ -35,6 +35,8 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return parse<T>(res);
 }
 
+export const timelineGroups = () => get<{ plans: { project: string; groups: { name: string; reason: string; ids: string[] }[] }[] }>("api/timeline-groups");
+
 export async function session(): Promise<Session> {
   const s = await get<Session>("api/session");
   csrf = s.csrf;

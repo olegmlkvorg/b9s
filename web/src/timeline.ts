@@ -4,9 +4,11 @@
 // with a due date is planned and drawn outlined. The default window is 3d (a day back, two ahead); "fit" spans the open work. "blocks"
 // arrows are drawn for the critical path (the longest open chain) and for the hovered or opened issue only. The tree's text
 // query and project filter apply; status chips do not, since closed work belongs on a timeline; archived issues stay out unless the Archived chip is on. A bar opens the detail.
-// Inside a lane, items in one state with one subject (their parent, else the kind their title opens with) sit in a group that
-// spans first to last; a tap folds or unfolds it. In-progress work never groups. An arrow to a folded item ends on its group.
+// Inside a lane, items in one state with one subject sit in a group that spans first to last; a tap folds or unfolds it. The subject
+// is the group Opus named for the item (the house's bin/timeline-groups.ts, served at api/timeline-groups, which also sets the reading
+// order), else the item's parent, else the kind its title opens with. In-progress work never groups. An arrow to a folded item ends on its group.
 
+import { timelineGroups } from "./api";
 import { closedAs } from "./closeout";
 import { timeText } from "./timetext";
 import { D, ancestors, eff, get, pool, projectOf, shortId, type Item } from "./data";
@@ -101,28 +103,32 @@ export function subjectOf(i: Item): string {
   return p ? p.t : KINDS[(i.t.match(/^[a-z]+/i)?.[0] || "").toLowerCase()] || "other work";
 }
 
-export interface Group { key: string; state: BarState; subject: string; bars: Bar[]; start: number; end: number; x0: number; x1: number; approx: boolean }
+/** One item's place in a named plan: its group, why, and where that group comes in the project's reading order. */
+export interface Placed { name: string; reason: string; rank: number }
+export interface Group { key: string; state: BarState; subject: string; reason?: string; bars: Bar[]; start: number; end: number; x0: number; x1: number; approx: boolean }
 export type Row = { bar: Bar } | { group: Group };
 const GROUP_MIN = 2;
 /** Done and rejected start folded; blocked and open keep their rows in view until tapped. */
 export const foldedAtFirst = (s: BarState) => s === "done" || s === "rejected";
 
 /** rowsOf folds a lane: each group takes the place of its earliest item, with its items after it when open. */
-export function rowsOf(l: Lane, isOpen: (g: Group) => boolean): Row[] {
+export function rowsOf(l: Lane, isOpen: (g: Group) => boolean, placed: (id: string) => Placed | undefined = () => undefined): Row[] {
+  const subject = (i: Item) => placed(i.id)?.name || subjectOf(i), rank = (b: Bar) => placed(b.i.id)?.rank ?? Infinity;
+  const ordered = [...l.bars].sort((a, b) => rank(a) === rank(b) ? 0 : rank(a) - rank(b));
   const groups = new Map<string, Bar[]>();
-  for (const b of l.bars) {
+  for (const b of ordered) {
     const state = barState(b.i);
     if (state === "progress") continue;
-    const key = ["g", l.group, l.owner, state, subjectOf(b.i)].join("|");
+    const key = ["g", l.group, l.owner, state, subject(b.i)].join("|");
     groups.set(key, [...(groups.get(key) || []), b]);
   }
   const of = new Map<Bar, Group>();
   for (const [key, bars] of groups) {
     if (bars.length < GROUP_MIN) continue;
-    const g: Group = { key, state: barState(bars[0].i), subject: subjectOf(bars[0].i), bars, start: Math.min(...bars.map(b => b.start)), end: Math.max(...bars.map(b => b.end)), x0: Math.min(...bars.map(b => b.x0)), x1: Math.max(...bars.map(b => b.x1)), approx: bars.some(b => b.approx) };
+    const g: Group = { key, state: barState(bars[0].i), subject: subject(bars[0].i), reason: placed(bars[0].i.id)?.reason, bars, start: Math.min(...bars.map(b => b.start)), end: Math.max(...bars.map(b => b.end)), x0: Math.min(...bars.map(b => b.x0)), x1: Math.max(...bars.map(b => b.x1)), approx: bars.some(b => b.approx) };
     for (const b of bars) of.set(b, g);
   }
-  return l.bars.flatMap((bar): Row[] => {
+  return ordered.flatMap((bar): Row[] => {
     const g = of.get(bar);
     if (!g) return [{ bar }];
     if (g.bars[0] !== bar) return [];
@@ -198,6 +204,16 @@ if (!WINDOWS.some(w => w.key === win)) win = "3d";
 let tapped = store.get<Record<string, boolean>>("timelineGroups", {});
 const groupOpen = (g: Group) => tapped[g.key] ?? !foldedAtFirst(g.state);
 export const toggleTimelineGroup = (key: string, opened: boolean) => { tapped = { ...tapped, [key]: !opened }; store.set("timelineGroups", tapped); };
+/** The named plans by item, refetched at most once a minute; none or a failed read leaves the program's grouping. */
+let placedBy = new Map<string, Placed>(), plansAt = 0;
+function refreshPlans(): void {
+  if (Date.now() - plansAt < 60e3) return;
+  plansAt = Date.now();
+  timelineGroups().then(r => {
+    placedBy = new Map(r.plans.flatMap(p => p.groups.flatMap((g, rank) => g.ids.map(id => [id, { name: g.name, reason: g.reason, rank }] as [string, Placed]))));
+    if (placedBy.size) renderTimeline();
+  }, () => { /* the program's grouping stands */ });
+}
 export const setTimelineWindow = (k: string) => { if (WINDOWS.some(w => w.key === k)) { win = k as WindowKey; store.set("timelineWindow", k); } };
 
 const ROW = 26;
@@ -205,6 +221,7 @@ let drawn: { edges: [string, string][]; crit: string[]; off: Map<string, string[
 let revealed: string | undefined;
 
 export function renderTimeline(): void {
+  refreshPlans();
   const v = $("#vTimeline"), now = Date.now();
   const items = pool().filter(textMatches);
   const w = win === "fit" ? fitWindow(items, now) : WINDOWS.find(x => x.key === win)!;
@@ -212,7 +229,7 @@ export function renderTimeline(): void {
   const bars = lanes.flatMap(l => l.bars), critPath = criticalPath(bars), crit = new Set(critPath), full = w.past + w.ahead, from = now - w.past;
   const onView = new Set(bars.map(b => b.i.id)), off = new Map(bars.map(b => [b.i.id, waitsOffView(b.i, onView)]));
   // A text search is looking for items, so it shows every row.
-  const rows = lanes.map(l => rowsOf(l, g => !!S.text.trim() || groupOpen(g)));
+  const rows = lanes.map(l => rowsOf(l, g => !!S.text.trim() || groupOpen(g), id => placedBy.get(id)));
   const rep = new Map<string, string>(), shownBars = new Set(rows.flat().flatMap(r => "bar" in r ? [r.bar.i.id] : []));
   for (const r of rows.flat()) if ("group" in r) {
     const g = r.group;
@@ -251,7 +268,7 @@ export function renderTimeline(): void {
     const first = waits[0] ? get(waits[0])?.t || shortId(waits[0]) : "", text = `${g.bars.length} ${word}: ${g.subject}${first ? `, waits on ${first}${waits.length > 1 ? ` +${waits.length - 1}` : ""}` : ""}`;
     const onCrit = g.bars.some(b => crit.has(b.i.id));
     return shell(g, row, g.state, ` grp${onCrit ? " crit" : ""}`, `data-tl="${esc(g.key)}" data-tlgroup="${esc(g.key)}" data-tlopened="${opened}" aria-expanded="${opened}"`,
-      `${text}\n${timeText(g.start, g.end, false, g.approx)}${waits.slice(1).map(x => `\nwaits on ${get(x)?.t || shortId(x)}`).join("")}\nTap to ${opened ? "fold" : "show the items"}`,
+      `${text}${g.reason ? `\n${g.reason}` : ""}\n${timeText(g.start, g.end, false, g.approx)}${waits.slice(1).map(x => `\nwaits on ${get(x)?.t || shortId(x)}`).join("")}\nTap to ${opened ? "fold" : "show the items"}`,
       `${text}, ${owner || "unassigned"}, ${g.approx ? "about " : ""}${when(g.start)} to ${when(g.end)}${onCrit ? ", critical path" : ""}`, owner, opened ? "▾" : "▸", `${STATES[g.state].g} ${text}`);
   };
   const head = `<div class="tlhead"><span class="tlwins" role="group" aria-label="Window">${WINDOWS.map(x => `<button class="chip${x.key === win ? " on" : ""}" data-tlwin="${x.key}" aria-pressed="${x.key === win}">${x.key}</button>`).join("")}</span>`

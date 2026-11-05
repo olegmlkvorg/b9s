@@ -300,3 +300,39 @@ test.describe("groups", () => {
     await expect(v.locator(".tlarrows path.cp")).toHaveCount(1);
   });
 });
+
+test.describe("named groups", () => {
+  const AGO = { startedMinutesAgo: 600, updatedMinutesAgo: 300 }, item = (id: string, rest: object) => ({ id, title: `[${id}] Item ${id}`, assignee: "cara", ...AGO, ...rest });
+  test.use({ fixture: { issues: [
+    item("a1", { status: "closed" }), item("a2", { status: "closed" }), item("a3", { status: "closed" }), item("a4", { status: "closed" }),
+    item("p1", { status: "in_progress" }), item("n1", { status: "closed" }), item("n2", { status: "closed" }),
+  ] } });
+  const stub = (page: import("@playwright/test").Page, body: string, status = 200) => page.route("**/api/timeline-groups", r => r.fulfill({ status, contentType: "application/json", body }));
+  const PLAN = JSON.stringify({ plans: [{ project: "t", groups: [
+    { name: "Read second", reason: "they ship together", ids: ["a3", "a4", "p1"] },
+    { name: "Read first", reason: "the base", ids: ["a1", "a2"] },
+  ] }] });
+  // All start together, so only the plan can put a3 before a1.
+  const go = async (page: import("@playwright/test").Page, project: Parameters<typeof open>[1]) => { await open(page, project); await page.locator('#bar [data-view="timeline"]').click(); return page.locator("#vTimeline"); };
+
+  test("a plan names the groups in its order, shows the reason on hover, and never folds live work", async ({ page, project }) => {
+    await stub(page, PLAN);
+    const v = await go(page, project), second = v.locator(".tlbar.grp", { hasText: "2 done: Read second" });
+    await expect(second).toHaveAttribute("title", /\nthey ship together\n/);
+    await expect(v.locator(".tlbar.grp .t").first()).toContainText("Read second");
+    await expect(v.locator('[data-tl="p1"]')).toHaveCount(1);
+    await expect(v.locator(".tlbar.grp", { hasText: "Read first" })).toHaveCount(1);
+  });
+
+  test("an item the plan does not name falls to the program's grouping", async ({ page, project }) => {
+    await stub(page, PLAN);
+    const v = await go(page, project);
+    await expect(v.locator(".tlbar.grp", { hasText: "2 done: other work" })).toHaveCount(1);
+  });
+
+  test("no plan and a failed read both leave the program's grouping", async ({ page, project }) => {
+    await stub(page, "{}", 500);
+    const v = await go(page, project);
+    await expect(v.locator(".tlbar.grp", { hasText: "6 done: other work" })).toHaveCount(1);
+  });
+});

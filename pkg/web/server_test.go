@@ -622,3 +622,29 @@ func TestSnapshotLeavesOutLongTextThatIssueReturns(t *testing.T) {
 		t.Fatalf("unpaired issue read: %d", code)
 	}
 }
+
+func TestTimelineGroupsServesValidFilesOnly(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("B9S_TIMELINE_GROUPS", dir)
+	if err := os.WriteFile(filepath.Join(dir, "pg.json"), []byte(`{"project":"pg"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bad.json"), []byte(`{`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ts := newTestServer(t, testAuth(t), nil)
+	res, err := ts.pairedClient(t).Get(ts.URL + "/api/timeline-groups")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var got struct {
+		Plans []struct{ Project string } `json:"plans"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Plans) != 1 || got.Plans[0].Project != "pg" {
+		t.Fatalf("plans = %+v", got.Plans)
+	}
+}
