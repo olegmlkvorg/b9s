@@ -625,6 +625,8 @@
 .tlbar.rt .tlfill { left: auto; right: 0; }
 .tlbar:hover, .tlbar:focus-visible { background: var(--hover); outline: 1px solid var(--accent); }
 .tlbar .t { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tlbar.grp .t { color: var(--text); text-decoration: none; font-weight: 600; }
+.tlbar.grp .tlfill { opacity: .55; }
 .tlbar.approx .tlfill { border-left-style: dotted; }
 .tlbar.crit .tlfill { box-shadow: 0 0 0 1px var(--priority); }
 .tlav { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--surface-3); border: 1px solid var(--line); color: var(--dim); font: 600 0.692rem var(--mono); }

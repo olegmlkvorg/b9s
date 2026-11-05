@@ -224,3 +224,77 @@ test.describe("archived", () => {
     await expect(v.locator('[data-tl="t-4"]')).toHaveCount(1);
   });
 });
+
+test.describe("groups", () => {
+  const AGO = { startedMinutesAgo: 600, updatedMinutesAgo: 300 };
+  const item = (id: string, title: string, rest: object) => ({ id, title: `[${id}] ${title}`, assignee: "cara", ...AGO, ...rest });
+  test.use({ fixture: { issues: [
+    { id: "e", title: "[e] Sim core", type: "epic" },
+    { id: "z", title: "[z] Far blocker", status: "open" },
+    item("d1", "One", { status: "closed", parent: "e", startedMinutesAgo: 900 }),
+    item("d2", "Two", { status: "closed", parent: "e", startedMinutesAgo: 500, updatedMinutesAgo: 100 }),
+    item("d3", "Three", { status: "closed", parent: "e" }),
+    item("f1", "fix: a", { status: "closed" }), item("f2", "Fix: b", { status: "closed" }),
+    item("x1", "Gone one", { status: "closed", closeReason: "superseded by d1", parent: "e" }),
+    item("x2", "Gone two", { status: "closed", closeReason: "dropped", parent: "e" }),
+    item("b1", "Stuck one", { status: "in_progress", parent: "e", blockedBy: ["z"] }),
+    item("b2", "Stuck two", { status: "in_progress", parent: "e", blockedBy: ["z"] }),
+    item("p1", "Moving one", { status: "in_progress", parent: "e" }), item("p2", "Moving two", { status: "in_progress", parent: "e" }),
+    item("w1", "Waits on d-work", { status: "in_progress", parent: "e", blockedBy: ["d2"] }),
+    item("c1", "Chain end", { status: "in_progress", assignee: "dan", blockedBy: ["b1"] }),
+  ] } });
+  const key = (v: import("@playwright/test").Locator, text: string) => v.locator(".tlbar.grp", { hasText: text });
+  const go = async (page: import("@playwright/test").Page, project: Parameters<typeof open>[1]) => { await open(page, project); await page.locator('#bar [data-view="timeline"]').click(); return page.locator("#vTimeline"); };
+
+  test("done and rejected fold by default, blocked stays open and names its wait, in progress never groups", async ({ page, project }) => {
+    const v = await go(page, project);
+    await expect(key(v, "3 done: Sim core")).toHaveAttribute("aria-expanded", "false");
+    await expect(key(v, "2 rejected: Sim core")).toHaveAttribute("aria-expanded", "false");
+    await expect(v.locator('[data-tl="d1"]')).toHaveCount(0);
+    await expect(v.locator('[data-tl="x1"]')).toHaveCount(0);
+    await expect(key(v, "2 blocked: Sim core, waits on Far blocker")).toHaveAttribute("aria-expanded", "true");
+    await expect(v.locator('[data-tl="b1"]')).toHaveCount(1);
+    await expect(v.locator('[data-tl="p1"]')).toHaveCount(1);
+    await expect(v.locator('[data-tl="p2"]')).toHaveCount(1);
+    await expect(key(v, "in progress")).toHaveCount(0);
+  });
+
+  test("items with no parent group by the kind their title opens with, and the rejected strike stays off the label", async ({ page, project }) => {
+    const v = await go(page, project);
+    await expect(key(v, "2 done: fixes")).toHaveCount(1);
+    await expect(key(v, "2 rejected").locator(".t")).not.toHaveCSS("text-decoration-line", "line-through");
+  });
+
+  test("a group's fill spans first start to last end", async ({ page, project }) => {
+    const v = await go(page, project);
+    await key(v, "3 done").click();
+    await expect(v.locator('[data-tl="d1"]')).toHaveCount(1);
+    const box = (s: string) => v.locator(s).first().evaluate(e => { const r = e.getBoundingClientRect(); return [r.left, r.right]; });
+    const g = await box('.tlbar.grp:has-text("3 done") .tlfill'), a = await box('[data-tl="d1"] .tlfill'), b = await box('[data-tl="d2"] .tlfill');
+    expect(Math.abs(g[0] - a[0])).toBeLessThan(2);
+    expect(Math.abs(g[1] - b[1])).toBeLessThan(2);
+  });
+
+  test("a tap unfolds, the state survives a reload, and a second tap folds", async ({ page, project }) => {
+    const v = await go(page, project);
+    await key(v, "3 done").click();
+    await expect(v.locator('[data-tl="d1"]')).toHaveCount(1);
+    await page.reload();
+    await expect(page.locator('#vTimeline [data-tl="d1"]')).toHaveCount(1);
+    await key(page.locator("#vTimeline"), "3 done").click();
+    await expect(page.locator('#vTimeline [data-tl="d1"]')).toHaveCount(0);
+    await expect(page.locator(".detail")).toHaveCount(0);
+  });
+
+  test("an arrow to a folded item ends on its group, and the critical path ends on a folded blocked group", async ({ page, project }) => {
+    const v = await go(page, project);
+    await v.locator('[data-tl="w1"]').dispatchEvent("mouseover");
+    await expect(v.locator(".tlarrows path.hot:not(.off)")).toHaveCount(1);
+    const crit = () => v.locator(".tlarrows path.cp, .tlarrows path.hot");
+    await expect(v.locator('[data-tl="b1"]')).toHaveClass(/crit/);
+    await key(v, "2 blocked").click();
+    await expect(v.locator('[data-tl="b1"]')).toHaveCount(0);
+    await expect(key(v, "2 blocked")).toHaveClass(/crit/);
+    await expect(crit()).not.toHaveCount(0);
+  });
+});

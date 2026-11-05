@@ -4,6 +4,8 @@
 // with a due date is planned and drawn outlined. The default window is 3d (a day back, two ahead); "fit" spans the open work. "blocks"
 // arrows are drawn for the critical path (the longest open chain) and for the hovered or opened issue only. The tree's text
 // query and project filter apply; status chips do not, since closed work belongs on a timeline; archived issues stay out unless the Archived chip is on. A bar opens the detail.
+// Inside a lane, items in one state with one subject (their parent, else the kind their title opens with) sit in a group that
+// spans first to last; a tap folds or unfolds it. In-progress work never groups. An arrow to a folded item ends on its group.
 
 import { closedAs } from "./closeout";
 import { timeText } from "./timetext";
@@ -91,6 +93,57 @@ export function layout(items: Item[], now: number, past: number, ahead: number, 
     || Number(b.bars.some(x => x.live)) - Number(a.bars.some(x => x.live)) || a.owner.localeCompare(b.owner));
 }
 
+/** Words a title opens with that name a kind of work, and how a group of them reads. */
+const KINDS: Record<string, string> = { fix: "fixes", ruling: "rulings", look: "looks", qa: "QA checks", review: "reviews", bug: "bugs", slice: "slices", wait: "waits", build: "builds" };
+/** subjectOf is what an item is grouped by: its parent, else the kind its title opens with, else "other work". */
+export function subjectOf(i: Item): string {
+  const p = i.parent ? get(i.parent) : undefined;
+  return p ? p.t : KINDS[(i.t.match(/^[a-z]+/i)?.[0] || "").toLowerCase()] || "other work";
+}
+
+export interface Group { key: string; state: BarState; subject: string; bars: Bar[]; start: number; end: number; x0: number; x1: number; approx: boolean }
+export type Row = { bar: Bar } | { group: Group };
+const GROUP_MIN = 2;
+/** Done and rejected start folded; blocked and open keep their rows in view until tapped. */
+export const foldedAtFirst = (s: BarState) => s === "done" || s === "rejected";
+
+/** rowsOf folds a lane: each group takes the place of its earliest item, with its items after it when open. */
+export function rowsOf(l: Lane, isOpen: (g: Group) => boolean): Row[] {
+  const groups = new Map<string, Bar[]>();
+  for (const b of l.bars) {
+    const state = barState(b.i);
+    if (state === "progress") continue;
+    const key = ["g", l.group, l.owner, state, subjectOf(b.i)].join("|");
+    groups.set(key, [...(groups.get(key) || []), b]);
+  }
+  const of = new Map<Bar, Group>();
+  for (const [key, bars] of groups) {
+    if (bars.length < GROUP_MIN) continue;
+    const g: Group = { key, state: barState(bars[0].i), subject: subjectOf(bars[0].i), bars, start: Math.min(...bars.map(b => b.start)), end: Math.max(...bars.map(b => b.end)), x0: Math.min(...bars.map(b => b.x0)), x1: Math.max(...bars.map(b => b.x1)), approx: bars.some(b => b.approx) };
+    for (const b of bars) of.set(b, g);
+  }
+  return l.bars.flatMap((bar): Row[] => {
+    const g = of.get(bar);
+    if (!g) return [{ bar }];
+    if (g.bars[0] !== bar) return [];
+    return [{ group: g }, ...(isOpen(g) ? g.bars.map(b => ({ bar: b })) : [])];
+  });
+}
+
+/** foldEdges moves each link's ends onto the folded groups in rep; a link inside one group disappears, and a repeat is kept once. */
+export function foldEdges(es: [string, string][], rep: Map<string, string>): [string, string][] {
+  const seen = new Set<string>();
+  return es.flatMap(([a, b]): [string, string][] => {
+    const x = rep.get(a) || a, y = rep.get(b) || b, k = x + "\u0000" + y;
+    if (x === y || seen.has(k)) return [];
+    seen.add(k); return [[x, y]];
+  });
+}
+/** foldPath moves the critical path onto groups, so a stretch inside one folded group is one step. */
+export function foldPath(path: string[], rep: Map<string, string>): string[] {
+  return path.map(id => rep.get(id) || id).filter((id, k, all) => id !== all[k - 1]);
+}
+
 /** edges are [waiter, waited-on] for every blocks relation whose two ends are drawn. */
 export function edges(bars: Bar[]): [string, string][] {
   const on = new Set(bars.map(b => b.i.id));
@@ -141,10 +194,14 @@ const badgeHTML = (name: string) => {
 // 3d (a day back, two ahead) is the default so today's work reads on first open; a picked chip is remembered.
 let win: WindowKey = store.get<WindowKey>("timelineWindow", "3d");
 if (!WINDOWS.some(w => w.key === win)) win = "3d";
+/** A tapped group's state, by key; a group never tapped follows foldedAtFirst. */
+let tapped = store.get<Record<string, boolean>>("timelineGroups", {});
+const groupOpen = (g: Group) => tapped[g.key] ?? !foldedAtFirst(g.state);
+export const toggleTimelineGroup = (key: string, opened: boolean) => { tapped = { ...tapped, [key]: !opened }; store.set("timelineGroups", tapped); };
 export const setTimelineWindow = (k: string) => { if (WINDOWS.some(w => w.key === k)) { win = k as WindowKey; store.set("timelineWindow", k); } };
 
 const ROW = 26;
-let drawn: { edges: [string, string][]; crit: string[]; off: Map<string, string[]> } = { edges: [], crit: [], off: new Map() };
+let drawn: { edges: [string, string][]; crit: string[]; off: Map<string, string[]>; rep: Map<string, string> } = { edges: [], crit: [], off: new Map(), rep: new Map() };
 let revealed: string | undefined;
 
 export function renderTimeline(): void {
@@ -154,6 +211,14 @@ export function renderTimeline(): void {
   const lanes = layout(items, now, w.past, w.ahead, D.project.all);
   const bars = lanes.flatMap(l => l.bars), critPath = criticalPath(bars), crit = new Set(critPath), full = w.past + w.ahead, from = now - w.past;
   const onView = new Set(bars.map(b => b.i.id)), off = new Map(bars.map(b => [b.i.id, waitsOffView(b.i, onView)]));
+  // A text search is looking for items, so it shows every row.
+  const rows = lanes.map(l => rowsOf(l, g => !!S.text.trim() || groupOpen(g)));
+  const rep = new Map<string, string>(), shownBars = new Set(rows.flat().flatMap(r => "bar" in r ? [r.bar.i.id] : []));
+  for (const r of rows.flat()) if ("group" in r) {
+    const g = r.group;
+    for (const b of g.bars) if (!shownBars.has(b.i.id)) rep.set(b.i.id, g.key);
+    if (rep.has(g.bars[0].i.id)) off.set(g.key, [...new Set(g.bars.flatMap(b => off.get(b.i.id) || []))]);
+  }
   const waitText = (b: Bar) => barState(b.i) === "blocked" && !b.i.blocked_by.length ? "\nmarked blocked, no item named as the cause"
     : (off.get(b.i.id) || []).map(x => `\nwaits on ${shortId(x)} ${get(x)?.t || ""} (outside this view)`).join("");
   const pct = (x: number) => (x * 100).toFixed(3) + "%";
@@ -164,25 +229,39 @@ export function renderTimeline(): void {
   const grid = ticks.map(t => `<div class="tltick" style="left:${pct((t - from) / full)}"></div>`).join("") + (w.past <= full ? `<div class="tlnow" style="left:${pct(w.past / full)}"></div>` : "");
   const when = (t: number) => new Date(t).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const bar = (b: Bar, row: number) => {
-    const state = barState(b.i), right = b.x0 > 0.62, word = b.planned && state === "open" ? "planned" : STATES[state].w;
+    const state = barState(b.i), word = b.planned && state === "open" ? "planned" : STATES[state].w;
     const label = `${shortId(b.i.id)} ${b.i.t}, ${b.i.assignee || "unassigned"}, ${word}${state === "rejected" && b.i.close_reason ? ` (${b.i.close_reason})` : ""}${crit.has(b.i.id) ? ", critical path" : ""}, ${b.approx ? "about " : ""}${when(b.start)} to ${b.live ? "now" : when(b.end)}`;
-    // The button reaches from the bar to the track's far edge (or, near the right, from the near edge to the bar), so the label
-    // always has room; the fill inside is the bar itself, at least 6 px wide so a ten-minute item still shows.
-    const place = right ? `left:0;width:${pct(b.x1)}` : `left:${pct(b.x0)};width:${pct(1 - b.x0)}`;
+    return shell(b, row, state, `${b.live ? " live" : ""}${b.planned ? " planned" : ""}${crit.has(b.i.id) ? " crit" : ""}`, `data-open="${esc(b.i.id)}" data-tl="${esc(b.i.id)}"`,
+      `${b.i.t}\n${timeText(b.start, b.live ? now : b.end, b.live, b.approx)}${waitText(b)}`, label, b.i.assignee, STATES[state].g, b.i.t);
+  };
+  // The button reaches from the bar to the track's far edge (or, near the right, from the near edge to the bar), so the label
+  // always has room; the fill inside is the bar itself, at least 6 px wide so a ten-minute item still shows.
+  const shell = (b: { x0: number; x1: number; approx: boolean }, row: number, state: BarState, cls: string, attrs: string, title: string, label: string, who: string | undefined, mark: string, text: string) => {
+    const right = b.x0 > 0.62, place = right ? `left:0;width:${pct(b.x1)}` : `left:${pct(b.x0)};width:${pct(1 - b.x0)}`;
     const fw = right ? (b.x1 - b.x0) / Math.max(b.x1, 1e-6) : (b.x1 - b.x0) / Math.max(1 - b.x0, 1e-6);
     // The label starts past a short fill, so the fill's pattern stays visible; on a long fill it starts at the bar, so it stays in view on a phone.
     const room = right ? b.x1 : 1 - b.x0, lead = b.x1 - b.x0 < room / 2 ? b.x1 - b.x0 : 0, nowAt = Math.min(1, Math.max(0, (w.past / full - b.x0) / Math.max(b.x1 - b.x0, 1e-6)));
-    return `<button class="tlbar s-${state}${right ? " rt" : ""}${b.live ? " live" : ""}${b.planned ? " planned" : ""}${b.approx ? " approx" : ""}${crit.has(b.i.id) ? " crit" : ""}" data-open="${esc(b.i.id)}" data-tl="${esc(b.i.id)}" title="${esc(`${b.i.t}\n${timeText(b.start, b.live ? now : b.end, b.live, b.approx)}${waitText(b)}`)}" aria-label="${esc(label)}"`
-      + ` style="${place};top:${4 + row * ROW}px;--lead:${pct(lead)};--now:${pct(nowAt)}"><i class="tlfill" style="width:${pct(Math.min(1, fw))}"></i>${badgeHTML(b.i.assignee)}<span class="tllab"><span class="tlmk" aria-hidden="true">${STATES[state].g}</span><span class="t">${esc(b.i.t)}</span></span></button>`;
+    return `<button class="tlbar s-${state}${right ? " rt" : ""}${b.approx ? " approx" : ""}${cls}" ${attrs} title="${esc(title)}" aria-label="${esc(label)}"`
+      + ` style="${place};top:${4 + row * ROW}px;--lead:${pct(lead)};--now:${pct(nowAt)}"><i class="tlfill" style="width:${pct(Math.min(1, fw))}"></i>${badgeHTML(who || "")}<span class="tllab"><span class="tlmk" aria-hidden="true">${mark}</span><span class="t">${esc(text)}</span></span></button>`;
+  };
+  const groupBar = (g: Group, row: number, owner: string) => {
+    const opened = !rep.has(g.bars[0].i.id), word = g.state;
+    const inside = new Set(g.bars.map(b => b.i.id));
+    const waits = g.state !== "blocked" ? [] : [...new Set(g.bars.flatMap(b => b.i.blocked_by))].filter(x => { const o = get(x); return !inside.has(x) && !(o && eff(o) === "closed"); });
+    const first = waits[0] ? get(waits[0])?.t || shortId(waits[0]) : "", text = `${g.bars.length} ${word}: ${g.subject}${first ? `, waits on ${first}${waits.length > 1 ? ` +${waits.length - 1}` : ""}` : ""}`;
+    const onCrit = g.bars.some(b => crit.has(b.i.id));
+    return shell(g, row, g.state, ` grp${onCrit ? " crit" : ""}`, `data-tl="${esc(g.key)}" data-tlgroup="${esc(g.key)}" data-tlopened="${opened}" aria-expanded="${opened}"`,
+      `${text}\n${timeText(g.start, g.end, false, g.approx)}${waits.slice(1).map(x => `\nwaits on ${get(x)?.t || shortId(x)}`).join("")}\nTap to ${opened ? "fold" : "show the items"}`,
+      `${text}, ${owner || "unassigned"}, ${g.approx ? "about " : ""}${when(g.start)} to ${when(g.end)}${onCrit ? ", critical path" : ""}`, owner, opened ? "▾" : "▸", `${STATES[g.state].g} ${text}`);
   };
   const head = `<div class="tlhead"><span class="tlwins" role="group" aria-label="Window">${WINDOWS.map(x => `<button class="chip${x.key === win ? " on" : ""}" data-tlwin="${x.key}" aria-pressed="${x.key === win}">${x.key}</button>`).join("")}</span>`
-    + `<span class="tlkey">${(Object.keys(STATES) as BarState[]).map(s => `<span class="s-${s}" data-tlstate="${s}"><i class="tlfill"></i><span class="tlmk" aria-hidden="true">${STATES[s].g}</span>${STATES[s].w}</span>`).join("")}<span><i class="tlk crit"></i>critical path</span><span>hover or open a bar: → waits on, ⇢ waits on something outside this view</span></span></div>`;
+    + `<span class="tlkey">${(Object.keys(STATES) as BarState[]).map(s => `<span class="s-${s}" data-tlstate="${s}"><i class="tlfill"></i><span class="tlmk" aria-hidden="true">${STATES[s].g}</span>${STATES[s].w}</span>`).join("")}<span><i class="tlk crit"></i>critical path</span><span>hover or open a bar: → waits on, ⇢ waits on something outside this view</span><span>tap ▸ to show a group's items</span></span></div>`;
   if (!lanes.length) { v.innerHTML = head + `<div class="empty">Nothing started, closed or planned in this window. Planned work needs a due date.</div>`; return; }
   v.innerHTML = head + `<div class="scroll tlscroll"><div class="tlgrid"><div class="tllane tlaxis"><div class="tlwho"></div><div class="tltrack">${ticks.map(t => `<span style="left:${pct((t - from) / full)}">${esc(lab(t))}</span>`).join("")}</div></div>`
     + lanes.map((l, n) => (l.group !== lanes[n - 1]?.group ? `<div class="sec tlgroup">${esc(l.group)}</div>` : "")
-      + `<div class="tllane"><div class="tlwho">${badgeHTML(l.owner)}<span>${esc(l.owner || "unassigned")}</span></div><div class="tltrack" style="height:${l.bars.length * ROW + 8}px">${grid}${l.bars.map(bar).join("")}</div></div>`).join("")
+      + `<div class="tllane"><div class="tlwho">${badgeHTML(l.owner)}<span>${esc(l.owner || "unassigned")}</span></div><div class="tltrack" style="height:${rows[n].length * ROW + 8}px">${grid}${rows[n].map((r, k) => "bar" in r ? bar(r.bar, k) : groupBar(r.group, k, l.owner)).join("")}</div></div>`).join("")
     + `</div></div>`;
-  drawn = { edges: edges(bars), crit: critPath, off };
+  drawn = { edges: foldEdges(edges(bars), rep), crit: foldPath(critPath, rep), off, rep };
   const open = S.detail?.stack[S.detail.stack.length - 1];
   drawArrows(v, open);
   if (!v.dataset.tlHover) {
@@ -216,6 +295,7 @@ function drawArrows(v: HTMLElement, focus?: string): void {
   const grid = v.querySelector<HTMLElement>(".tlgrid");
   if (!grid) return;
   grid.querySelector(".tlarrows")?.remove();
+  focus = focus && (drawn.rep.get(focus) || focus);
   const es = shownEdges(drawn.edges, drawn.crit, focus), stub = focus && drawn.off.get(focus)?.length ? focus : "";
   if (!es.length && !stub) return;
   const g = grid.getBoundingClientRect();
