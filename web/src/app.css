@@ -629,7 +629,7 @@
 .tlbar.grp .tlfill { opacity: .55; }
 .tlbar.dl .tlfill { opacity: 1; }
 .tlmore { flex: none; color: var(--muted); font-size: 0.769rem; }
-.tlprog { flex-direction: column; align-items: stretch; justify-content: center; gap: 3px; font-family: var(--mono); }
+.tlprog { flex-direction: column; align-items: stretch; justify-content: flex-start; padding-top: 9px; gap: 3px; font-family: var(--mono); }
 .tlpn { font-size: 0.923rem; color: var(--text); }
 .tlmeter { display: block; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .tlmeter i { display: block; height: 100%; background: var(--green); }
