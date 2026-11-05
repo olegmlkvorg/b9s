@@ -5,6 +5,8 @@
 // arrows are drawn for the critical path (the longest open chain) and for the hovered or opened issue only. The tree's text
 // query and project filter apply; status chips do not, since closed work belongs on a timeline; archived issues stay out unless the Archived chip is on. A bar opens the detail.
 // Inside a lane, items in one state with one subject sit in a group that spans first to last; a tap folds or unfolds it. The subject
+// A project with a plan reads as deliverables: one row each, with done of total, its state, the agents as badges and what it waits on; a
+// tap opens its items, with the same folds inside, and the "agents" chip gives the owner lanes back. A project with no plan keeps lanes.
 // is the group Opus named for the item (the house's bin/timeline-groups.ts, served at api/timeline-groups, which also sets the reading
 // order), else the item's parent, else the kind its title opens with. In-progress work never groups. An arrow to a folded item ends on its group.
 
@@ -76,16 +78,21 @@ export function epicOf(i: Item): string {
 }
 
 /** layout returns one lane per section and assignee in [now - past, now + ahead]; each bar is its own row, earliest first. */
+function placedBars(items: Item[], now: number, from: number, full: number): Bar[] {
+  return items.flatMap(i => {
+    const s = span(i, now);
+    if (!s || s.end < from || s.start > from + full) return [];
+    return [{ i, ...s, x0: Math.max(0, (s.start - from) / full), x1: Math.min(1, (s.end - from) / full) }];
+  });
+}
 export function layout(items: Item[], now: number, past: number, ahead: number, byProject: boolean): Lane[] {
   const from = now - past, full = past + ahead, lanes = new Map<string, Bar[]>();
-  for (const i of items) {
-    const s = span(i, now);
-    if (!s || s.end < from || s.start > from + full) continue;
-    const e = epicOf(i), ep = e ? get(e) : undefined;
+  for (const bar of placedBars(items, now, from, full)) {
+    const i = bar.i, e = epicOf(i), ep = e ? get(e) : undefined;
     const group = (byProject ? projectOf(i) + " / " : "") + (ep ? ep.t : "No epic");
     const key = group + "\u0000" + (i.assignee || "");
     if (!lanes.has(key)) lanes.set(key, []);
-    lanes.get(key)!.push({ i, ...s, x0: Math.max(0, (s.start - from) / full), x1: Math.min(1, (s.end - from) / full) });
+    lanes.get(key)!.push(bar);
   }
   const noEpic = (g: string) => g.endsWith("No epic") ? 1 : 0;
   return [...lanes].map(([key, bars]) => {
@@ -150,6 +157,29 @@ export function foldPath(path: string[], rep: Map<string, string>): string[] {
   return path.map(id => rep.get(id) || id).filter((id, k, all) => id !== all[k - 1]);
 }
 
+export interface Plan { project: string; groups: { name: string; reason: string; ids: string[] }[] }
+export interface Deliverable { key: string; name: string; reason: string; project: string; bars: Bar[]; done: number; total: number; state: BarState; blocked: number; owners: string[]; waits: string[]; start: number; end: number; x0: number; x1: number; approx: boolean }
+const UNPLACED = { name: "Not placed yet", reason: "New items no deliverable has taken yet." };
+
+/** deliverables turns plans into rows, in plan order. Progress counts every item, in the window or not; rejected work is out of the total. One finished before the window is left out. */
+export function deliverables(plans: Plan[], items: Item[], now: number, past: number, ahead: number): Deliverable[] {
+  const from = now - past, full = past + ahead, placed = new Set(plans.flatMap(p => p.groups.flatMap(g => g.ids)));
+  return plans.flatMap(p => [...p.groups, { ...UNPLACED, ids: items.filter(i => i.id.startsWith(p.project + "-") && !placed.has(i.id)).map(i => i.id) }].flatMap((g): Deliverable[] => {
+    const inside = g.ids.flatMap(id => { const i = get(id); return i && items.includes(i) ? [i] : []; });
+    if (!inside.length) return [];
+    const states = inside.map(barState), count = (s: BarState) => states.filter(x => x === s).length;
+    const spans = inside.flatMap(i => { const s = span(i, now); return s ? [s] : []; });
+    const start = spans.length ? Math.min(...spans.map(s => s.start)) : now, end = spans.length ? Math.max(...spans.map(s => s.end)) : now;
+    const total = inside.length - count("rejected"), done = count("done");
+    const state: BarState = count("progress") ? "progress" : count("blocked") ? "blocked" : total === 0 ? "rejected" : done === total ? "done" : "open";
+    if ((state === "done" || state === "rejected") && end < from) return [];
+    const ids = new Set(g.ids), clip = (t: number) => Math.min(1, Math.max(0, (t - from) / full));
+    const waits = [...new Set(inside.filter(i => barState(i) === "blocked").flatMap(i => i.blocked_by))].filter(x => { const o = get(x); return !ids.has(x) && !(o && eff(o) === "closed"); });
+    return [{ key: ["d", p.project, g.name].join("|"), name: g.name, reason: g.reason, project: p.project, bars: placedBars(inside, now, from, full).sort((a, c) => a.start - c.start), done, total, state, blocked: count("blocked"),
+      owners: [...new Set(inside.filter(i => eff(i) !== "closed").concat(inside).map(i => i.assignee).filter(Boolean) as string[])], waits, start, end, x0: clip(start), x1: clip(end), approx: spans.some(s => s.approx) }];
+  }));
+}
+
 /** edges are [waiter, waited-on] for every blocks relation whose two ends are drawn. */
 export function edges(bars: Bar[]): [string, string][] {
   const on = new Set(bars.map(b => b.i.id));
@@ -203,13 +233,17 @@ if (!WINDOWS.some(w => w.key === win)) win = "3d";
 /** A tapped group's state, by key; a group never tapped follows foldedAtFirst. */
 let tapped = store.get<Record<string, boolean>>("timelineGroups", {});
 const groupOpen = (g: Group) => tapped[g.key] ?? !foldedAtFirst(g.state);
+const deliverableOpen = (d: Deliverable) => tapped[d.key] ?? false;
 export const toggleTimelineGroup = (key: string, opened: boolean) => { tapped = { ...tapped, [key]: !opened }; store.set("timelineGroups", tapped); };
 /** The named plans by item, refetched at most once a minute; none or a failed read leaves the program's grouping. */
-let placedBy = new Map<string, Placed>(), plansAt = 0;
+let placedBy = new Map<string, Placed>(), plansAt = 0, plans: Plan[] = [];
+let byAgent = store.get<boolean>("timelineByAgent", false);
+export const toggleTimelineAgents = () => { byAgent = !byAgent; store.set("timelineByAgent", byAgent); };
 function refreshPlans(): void {
   if (Date.now() - plansAt < 60e3) return;
   plansAt = Date.now();
   timelineGroups().then(r => {
+    plans = r.plans;
     placedBy = new Map(r.plans.flatMap(p => p.groups.flatMap((g, rank) => g.ids.map(id => [id, { name: g.name, reason: g.reason, rank }] as [string, Placed]))));
     if (placedBy.size) renderTimeline();
   }, () => { /* the program's grouping stands */ });
@@ -225,13 +259,21 @@ export function renderTimeline(): void {
   const v = $("#vTimeline"), now = Date.now();
   const items = pool().filter(textMatches);
   const w = win === "fit" ? fitWindow(items, now) : WINDOWS.find(x => x.key === win)!;
-  const lanes = layout(items, now, w.past, w.ahead, D.project.all);
-  const bars = lanes.flatMap(l => l.bars), critPath = criticalPath(bars), crit = new Set(critPath), full = w.past + w.ahead, from = now - w.past;
+  const dPlans = byAgent ? [] : plans, ds = deliverables(dPlans, items, now, w.past, w.ahead), inPlan = (i: Item) => dPlans.some(p => i.id.startsWith(p.project + "-"));
+  const lanes = layout(items.filter(i => !inPlan(i)), now, w.past, w.ahead, D.project.all);
+  const bars = [...ds.flatMap(d => d.bars), ...lanes.flatMap(l => l.bars)], critPath = criticalPath(bars), crit = new Set(critPath), full = w.past + w.ahead, from = now - w.past;
   const onView = new Set(bars.map(b => b.i.id)), off = new Map(bars.map(b => [b.i.id, waitsOffView(b.i, onView)]));
   // A text search is looking for items, so it shows every row.
   const rows = lanes.map(l => rowsOf(l, g => !!S.text.trim() || groupOpen(g), id => placedBy.get(id)));
-  const rep = new Map<string, string>(), shownBars = new Set(rows.flat().flatMap(r => "bar" in r ? [r.bar.i.id] : []));
-  for (const r of rows.flat()) if ("group" in r) {
+  // A deliverable's items fold the same way, with no owner: each item shows its own badge.
+  const dRows = ds.map(d => !!S.text.trim() || deliverableOpen(d) ? rowsOf({ group: d.key, owner: "", bars: d.bars }, g => !!S.text.trim() || groupOpen(g)) : []);
+  const rep = new Map<string, string>(), shownBars = new Set([...rows, ...dRows].flat().flatMap(r => "bar" in r ? [r.bar.i.id] : []));
+  ds.forEach((d, n) => {
+    if (dRows[n].length) return;
+    for (const b of d.bars) rep.set(b.i.id, d.key);
+    off.set(d.key, [...new Set(d.bars.flatMap(b => off.get(b.i.id) || []))]);
+  });
+  for (const r of [...rows, ...dRows].flat()) if ("group" in r) {
     const g = r.group;
     for (const b of g.bars) if (!shownBars.has(b.i.id)) rep.set(b.i.id, g.key);
     if (rep.has(g.bars[0].i.id)) off.set(g.key, [...new Set(g.bars.flatMap(b => off.get(b.i.id) || []))]);
@@ -253,13 +295,13 @@ export function renderTimeline(): void {
   };
   // The button reaches from the bar to the track's far edge (or, near the right, from the near edge to the bar), so the label
   // always has room; the fill inside is the bar itself, at least 6 px wide so a ten-minute item still shows.
-  const shell = (b: { x0: number; x1: number; approx: boolean }, row: number, state: BarState, cls: string, attrs: string, title: string, label: string, who: string | undefined, mark: string, text: string) => {
+  const shell = (b: { x0: number; x1: number; approx: boolean }, row: number, state: BarState, cls: string, attrs: string, title: string, label: string, who: string | undefined | null | string[], mark: string, text: string) => {
     const right = b.x0 > 0.62, place = right ? `left:0;width:${pct(b.x1)}` : `left:${pct(b.x0)};width:${pct(1 - b.x0)}`;
     const fw = right ? (b.x1 - b.x0) / Math.max(b.x1, 1e-6) : (b.x1 - b.x0) / Math.max(1 - b.x0, 1e-6);
     // The label starts past a short fill, so the fill's pattern stays visible; on a long fill it starts at the bar, so it stays in view on a phone.
     const room = right ? b.x1 : 1 - b.x0, lead = b.x1 - b.x0 < room / 2 ? b.x1 - b.x0 : 0, nowAt = Math.min(1, Math.max(0, (w.past / full - b.x0) / Math.max(b.x1 - b.x0, 1e-6)));
     return `<button class="tlbar s-${state}${right ? " rt" : ""}${b.approx ? " approx" : ""}${cls}" ${attrs} title="${esc(title)}" aria-label="${esc(label)}"`
-      + ` style="${place};top:${4 + row * ROW}px;--lead:${pct(lead)};--now:${pct(nowAt)}"><i class="tlfill" style="width:${pct(Math.min(1, fw))}"></i>${badgeHTML(who || "")}<span class="tllab"><span class="tlmk" aria-hidden="true">${mark}</span><span class="t">${esc(text)}</span></span></button>`;
+      + ` style="${place};top:${4 + row * ROW}px;--lead:${pct(lead)};--now:${pct(nowAt)}"><i class="tlfill" style="width:${pct(Math.min(1, fw))}"></i>${who === null ? "" : Array.isArray(who) ? badges(who) : badgeHTML(who || "")}<span class="tllab"><span class="tlmk" aria-hidden="true">${mark}</span><span class="t">${esc(text)}</span></span></button>`;
   };
   const groupBar = (g: Group, row: number, owner: string) => {
     const opened = !rep.has(g.bars[0].i.id), word = g.state;
@@ -267,15 +309,31 @@ export function renderTimeline(): void {
     const waits = g.state !== "blocked" ? [] : [...new Set(g.bars.flatMap(b => b.i.blocked_by))].filter(x => { const o = get(x); return !inside.has(x) && !(o && eff(o) === "closed"); });
     const first = waits[0] ? get(waits[0])?.t || shortId(waits[0]) : "", text = `${g.bars.length} ${word}: ${g.subject}${first ? `, waits on ${first}${waits.length > 1 ? ` +${waits.length - 1}` : ""}` : ""}`;
     const onCrit = g.bars.some(b => crit.has(b.i.id));
+    const who = [...new Set(g.bars.map(b => b.i.assignee))];
     return shell(g, row, g.state, ` grp${onCrit ? " crit" : ""}`, `data-tl="${esc(g.key)}" data-tlgroup="${esc(g.key)}" data-tlopened="${opened}" aria-expanded="${opened}"`,
       `${text}${g.reason ? `\n${g.reason}` : ""}\n${timeText(g.start, g.end, false, g.approx)}${waits.slice(1).map(x => `\nwaits on ${get(x)?.t || shortId(x)}`).join("")}\nTap to ${opened ? "fold" : "show the items"}`,
-      `${text}, ${owner || "unassigned"}, ${g.approx ? "about " : ""}${when(g.start)} to ${when(g.end)}${onCrit ? ", critical path" : ""}`, owner, opened ? "▾" : "▸", `${STATES[g.state].g} ${text}`);
+      `${text}, ${owner || "unassigned"}, ${g.approx ? "about " : ""}${when(g.start)} to ${when(g.end)}${onCrit ? ", critical path" : ""}`, owner || (who.length === 1 ? who[0] : null), opened ? "▾" : "▸", `${STATES[g.state].g} ${text}`);
   };
-  const head = `<div class="tlhead"><span class="tlwins" role="group" aria-label="Window">${WINDOWS.map(x => `<button class="chip${x.key === win ? " on" : ""}" data-tlwin="${x.key}" aria-pressed="${x.key === win}">${x.key}</button>`).join("")}</span>`
+  const badges = (who: string[]) => who.slice(0, 3).map(badgeHTML).join("") + (who.length > 3 ? `<span class="tlmore">+${who.length - 3}</span>` : "");
+  const DWORD: Record<BarState, string> = { progress: "moving", blocked: "stuck", done: "done", open: "next", rejected: "dropped" };
+  const deliverableBar = (d: Deliverable, row: number) => {
+    const opened = !rep.has(d.bars[0]?.i.id) && (!!S.text.trim() || deliverableOpen(d)), first = d.waits[0] ? get(d.waits[0])?.t || shortId(d.waits[0]) : "";
+    const stuck = d.blocked ? `${d.blocked} blocked${first ? `, waits on ${first}${d.waits.length > 1 ? ` +${d.waits.length - 1}` : ""}` : ""}` : "";
+    const text = `${d.name}${stuck ? ` · ${stuck}` : ""}`, onCrit = d.bars.some(b => crit.has(b.i.id));
+    return shell(d, row, d.state, ` grp dl${onCrit ? " crit" : ""}`, `data-tl="${esc(d.key)}" data-tlgroup="${esc(d.key)}" data-tlopened="${opened}" aria-expanded="${opened}"`,
+      `${d.name}: ${d.reason}\n${d.done} of ${d.total} done, ${DWORD[d.state]}\n${d.owners.join(", ") || "nobody assigned"}${stuck ? `\n${stuck}` : ""}${d.waits.slice(1).map(x => `\nwaits on ${get(x)?.t || shortId(x)}`).join("")}`,
+      `${d.name}, ${d.done} of ${d.total} done, ${DWORD[d.state]}${stuck ? `, ${stuck}` : ""}, ${d.owners.join(", ") || "nobody assigned"}${onCrit ? ", critical path" : ""}`, d.owners, `${opened ? "▾" : "▸"} ${STATES[d.state].g}`, text);
+  };
+  const deliverableRow = (d: Deliverable, n: number) => {
+    const inner = dRows[n], pct100 = d.total ? Math.round(100 * d.done / d.total) : 0;
+    return (d.project !== ds[n - 1]?.project && dPlans.length > 1 ? `<div class="sec tlgroup">${esc(d.project)}</div>` : "")
+      + `<div class="tllane"><div class="tlwho tlprog" title="${d.done} of ${d.total} done"><span class="tlpn">${d.done}/${d.total}</span><span class="tlmeter"><i style="width:${pct100}%"></i></span></div><div class="tltrack" style="height:${(inner.length + 1) * ROW + 8}px">${grid}${deliverableBar(d, 0)}${inner.map((r, k) => "bar" in r ? bar(r.bar, k + 1) : groupBar(r.group, k + 1, "")).join("")}</div></div>`;
+  };
+  const head = `<div class="tlhead"><span class="tlwins" role="group" aria-label="Window">${WINDOWS.map(x => `<button class="chip${x.key === win ? " on" : ""}" data-tlwin="${x.key}" aria-pressed="${x.key === win}">${x.key}</button>`).join("")}${plans.length ? `<button class="chip${byAgent ? " on" : ""}" data-tlagents aria-pressed="${byAgent}">agents</button>` : ""}</span>`
     + `<span class="tlkey">${(Object.keys(STATES) as BarState[]).map(s => `<span class="s-${s}" data-tlstate="${s}"><i class="tlfill"></i><span class="tlmk" aria-hidden="true">${STATES[s].g}</span>${STATES[s].w}</span>`).join("")}<span><i class="tlk crit"></i>critical path</span><span>hover or open a bar: → waits on, ⇢ waits on something outside this view</span><span>tap ▸ to show a group's items</span></span></div>`;
-  if (!lanes.length) { v.innerHTML = head + `<div class="empty">Nothing started, closed or planned in this window. Planned work needs a due date.</div>`; return; }
+  if (!lanes.length && !ds.length) { v.innerHTML = head + `<div class="empty">Nothing started, closed or planned in this window. Planned work needs a due date.</div>`; return; }
   v.innerHTML = head + `<div class="scroll tlscroll"><div class="tlgrid"><div class="tllane tlaxis"><div class="tlwho"></div><div class="tltrack">${ticks.map(t => `<span style="left:${pct((t - from) / full)}">${esc(lab(t))}</span>`).join("")}</div></div>`
-    + lanes.map((l, n) => (l.group !== lanes[n - 1]?.group ? `<div class="sec tlgroup">${esc(l.group)}</div>` : "")
+    + ds.map(deliverableRow).join("") + lanes.map((l, n) => (l.group !== lanes[n - 1]?.group ? `<div class="sec tlgroup">${esc(l.group)}</div>` : "")
       + `<div class="tllane"><div class="tlwho">${badgeHTML(l.owner)}<span>${esc(l.owner || "unassigned")}</span></div><div class="tltrack" style="height:${rows[n].length * ROW + 8}px">${grid}${rows[n].map((r, k) => "bar" in r ? bar(r.bar, k) : groupBar(r.group, k, l.owner)).join("")}</div></div>`).join("")
     + `</div></div>`;
   drawn = { edges: foldEdges(edges(bars), rep), crit: foldPath(critPath, rep), off, rep };

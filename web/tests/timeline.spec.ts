@@ -301,38 +301,79 @@ test.describe("groups", () => {
   });
 });
 
-test.describe("named groups", () => {
+test.describe("deliverables", () => {
   const AGO = { startedMinutesAgo: 600, updatedMinutesAgo: 300 }, item = (id: string, rest: object) => ({ id, title: `[${id}] Item ${id}`, assignee: "cara", ...AGO, ...rest });
   test.use({ fixture: { issues: [
-    item("a1", { status: "closed" }), item("a2", { status: "closed" }), item("a3", { status: "closed" }), item("a4", { status: "closed" }),
-    item("p1", { status: "in_progress" }), item("n1", { status: "closed" }), item("n2", { status: "closed" }),
+    { id: "x-far", title: "[x-far] Far blocker", status: "open" },
+    item("t-a1", { status: "closed" }), item("t-a2", { status: "closed", assignee: "bob" }), item("t-a3", { status: "closed" }), item("t-a4", { status: "closed", closeReason: "dropped" }),
+    item("t-p1", { status: "in_progress", assignee: "dan" }),
+    item("t-b1", { status: "in_progress", blockedBy: ["x-far"] }),
+    item("t-n1", { status: "closed" }), item("t-w", { status: "in_progress", blockedBy: ["t-a1"] }),
+    item("u-1", { status: "closed" }), item("u-2", { status: "closed" }),
   ] } });
   const stub = (page: import("@playwright/test").Page, body: string, status = 200) => page.route("**/api/timeline-groups", r => r.fulfill({ status, contentType: "application/json", body }));
   const PLAN = JSON.stringify({ plans: [{ project: "t", groups: [
-    { name: "Read second", reason: "they ship together", ids: ["a3", "a4", "p1"] },
-    { name: "Read first", reason: "the base", ids: ["a1", "a2"] },
+    { name: "Printable cards", reason: "cards ready to print", ids: ["t-p1", "t-a1", "t-a2", "t-a3", "t-a4"] },
+    { name: "Battles on cells", reason: "fights on the tile", ids: ["t-b1"] },
   ] }] });
-  // All start together, so only the plan can put a3 before a1.
   const go = async (page: import("@playwright/test").Page, project: Parameters<typeof open>[1]) => { await open(page, project); await page.locator('#bar [data-view="timeline"]').click(); return page.locator("#vTimeline"); };
+  const row = (v: import("@playwright/test").Locator, name: string) => v.locator(".tlbar.dl", { hasText: name });
 
-  test("a plan names the groups in its order, shows the reason on hover, and never folds live work", async ({ page, project }) => {
+  test("each deliverable is one row with progress, state, agents and its wait, in plan order, and the owner is no lane", async ({ page, project }) => {
     await stub(page, PLAN);
-    const v = await go(page, project), second = v.locator(".tlbar.grp", { hasText: "2 done: Read second" });
-    await expect(second).toHaveAttribute("title", /\nthey ship together\n/);
-    await expect(v.locator(".tlbar.grp .t").first()).toContainText("Read second");
-    await expect(v.locator('[data-tl="p1"]')).toHaveCount(1);
-    await expect(v.locator(".tlbar.grp", { hasText: "Read first" })).toHaveCount(1);
+    const v = await go(page, project), cards = row(v, "Printable cards");
+    await expect(cards).toHaveAttribute("title", /cards ready to print\n3 of 4 done, moving/);
+    await expect(cards.locator(".tlmk")).toHaveText("▸ ●");
+    await expect(cards.locator(".tlav")).toHaveCount(3);
+    await expect(v.locator(".tlpn").first()).toHaveText("3/4");
+    await expect(v.locator(".tlbar.dl .t").first()).toContainText("Printable cards");
+    await expect(row(v, "Battles on cells")).toContainText("1 blocked, waits on Far blocker");
+    await expect(row(v, "Battles on cells")).toHaveClass(/s-blocked/);
+    await expect(v.locator(".tlwho", { hasText: "dan" })).toHaveCount(0);
+    await expect(v.locator('[data-tl="t-p1"]')).toHaveCount(0);
   });
 
-  test("an item the plan does not name falls to the program's grouping", async ({ page, project }) => {
+  test("a tap opens the items with folds inside and live work out, and it stays open after a reload", async ({ page, project }) => {
     await stub(page, PLAN);
     const v = await go(page, project);
-    await expect(v.locator(".tlbar.grp", { hasText: "2 done: other work" })).toHaveCount(1);
+    await row(v, "Printable cards").click();
+    await expect(v.locator('[data-tl="t-p1"]')).toHaveCount(1);
+    await expect(v.locator(".tlbar.grp:not(.dl)", { hasText: "3 done" })).toHaveCount(1);
+    await expect(v.locator('[data-tl="t-a1"]')).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator('#vTimeline [data-tl="t-p1"]')).toHaveCount(1);
   });
 
-  test("no plan and a failed read both leave the program's grouping", async ({ page, project }) => {
+  test("an item the plan does not name sits in Not placed yet, and a project with no plan keeps its lanes", async ({ page, project }) => {
+    await stub(page, PLAN);
+    const v = await go(page, project);
+    await expect(row(v, "Not placed yet")).toHaveCount(1);
+    await expect(v.locator(".tlbar.grp:not(.dl)", { hasText: "2 done: other work" })).toHaveCount(1);
+    await expect(v.locator(".tlwho", { hasText: "cara" })).toHaveCount(1);
+  });
+
+  test("the agents chip brings owner lanes back with the plan's names and reason", async ({ page, project }) => {
+    await stub(page, PLAN);
+    const v = await go(page, project);
+    await v.locator("[data-tlagents]").click();
+    await expect(v.locator(".tlbar.dl")).toHaveCount(0);
+    await expect(v.locator(".tlwho", { hasText: "dan" })).toHaveCount(1);
+    await expect(v.locator(".tlbar.grp", { hasText: "2 done: Printable cards" })).toHaveAttribute("title", /\ncards ready to print\n/);
+  });
+
+  test("an arrow between two closed deliverables runs row to row", async ({ page, project }) => {
+    await stub(page, JSON.stringify({ plans: [{ project: "t", groups: [{ name: "One", reason: "r", ids: ["t-a1", "t-a2"] }, { name: "Two", reason: "r", ids: ["t-w"] }] }] }));
+    const v = await go(page, project);
+    await expect(row(v, "Two")).toHaveCount(1);
+    await row(v, "Two").dispatchEvent("mouseover");
+    await expect(v.locator(".tlarrows path.hot:not(.off)")).toHaveCount(1);
+  });
+
+  test("a failed read leaves the program's lanes", async ({ page, project }) => {
     await stub(page, "{}", 500);
     const v = await go(page, project);
-    await expect(v.locator(".tlbar.grp", { hasText: "6 done: other work" })).toHaveCount(1);
+    await expect(v.locator(".tlbar.dl")).toHaveCount(0);
+    await expect(v.locator("[data-tlagents]")).toHaveCount(0);
+    await expect(v.locator(".tlbar.grp", { hasText: "other work" })).toHaveCount(1);
   });
 });

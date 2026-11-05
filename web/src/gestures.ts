@@ -9,7 +9,7 @@ import {
 } from "./actions";
 import { adoptCursor, onKey } from "./keys";
 import { memoryBack } from "./memory";
-import { setTimelineWindow, toggleTimelineGroup } from "./timeline";
+import { setTimelineWindow, toggleTimelineAgents, toggleTimelineGroup } from "./timeline";
 import { canGoBack } from "./nav";
 import { appW, colOf, ensureVisible, fullH, halfH, markCellEdges, openCols, railShown, render, renderBoard, renderSearch, revealBoardCursor, siblings } from "./render";
 import { S, chipRowVisible, stepLanes } from "./state";
@@ -479,6 +479,7 @@ function bindClicks(): void {
     if (hdr) { const k = hdr.dataset.hdr!; if (S.folded.has(k)) S.folded.delete(k); else S.folded.add(k); render(); return; }
     const tw = t.closest<HTMLElement>("[data-tlwin]");
     if (tw) { setTimelineWindow(tw.dataset.tlwin!); render(); return; }
+    if (t.closest("[data-tlagents]")) { toggleTimelineAgents(); render(); return; }
     const tg = t.closest<HTMLElement>("[data-tlgroup]");
     if (tg) { toggleTimelineGroup(tg.dataset.tlgroup!, tg.dataset.tlopened === "true"); render(); return; }
     const cr = t.closest<HTMLElement>("[data-crumb]");

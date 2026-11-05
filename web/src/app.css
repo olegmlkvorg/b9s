@@ -627,6 +627,12 @@
 .tlbar .t { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .tlbar.grp .t { color: var(--text); text-decoration: none; font-weight: 600; }
 .tlbar.grp .tlfill { opacity: .55; }
+.tlbar.dl .tlfill { opacity: 1; }
+.tlmore { flex: none; color: var(--muted); font-size: 0.769rem; }
+.tlprog { flex-direction: column; align-items: stretch; justify-content: center; gap: 3px; font-family: var(--mono); }
+.tlpn { font-size: 0.923rem; color: var(--text); }
+.tlmeter { display: block; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.tlmeter i { display: block; height: 100%; background: var(--green); }
 .tlbar.approx .tlfill { border-left-style: dotted; }
 .tlbar.crit .tlfill { box-shadow: 0 0 0 1px var(--priority); }
 .tlav { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--surface-3); border: 1px solid var(--line); color: var(--dim); font: 600 0.692rem var(--mono); }
