@@ -28,6 +28,9 @@ const (
 	QueryFieldLabel    QueryField = "label"
 	QueryFieldAssignee QueryField = "assignee"
 	QueryFieldProject  QueryField = "project"
+	// QueryFieldIn is exact where id: is fuzzy: in:pg is every pg-... issue
+	// and in:house-ikb is that epic and its dotted children, never pg-c78b3e for in:gc.
+	QueryFieldIn QueryField = "in"
 )
 
 type issueQueryPredicate struct {
@@ -155,6 +158,8 @@ func predicateMatchesIssue(predicate issueQueryPredicate, issue model.Issue) boo
 		return issueMatchesFuzzyText(issue, value)
 	case QueryFieldID:
 		return fuzzyTextMatch(issue.ID, value)
+	case QueryFieldIn:
+		return issueIsIn(issue.ID, value)
 	case QueryFieldTitle:
 		return fuzzyTextMatch(issue.Title, value)
 	case QueryFieldStatus:
@@ -181,6 +186,16 @@ func predicateMatchesIssue(predicate issueQueryPredicate, issue model.Issue) boo
 	default:
 		return false
 	}
+}
+
+// issueIsIn reports whether id is the scope itself, or is under it: a repository
+// prefix owns "<prefix>-..." and an issue owns its dotted children "<id>.n".
+func issueIsIn(id, scope string) bool {
+	id, scope = strings.ToLower(id), strings.ToLower(strings.TrimSpace(scope))
+	if scope == "" {
+		return false
+	}
+	return id == scope || strings.HasPrefix(id, scope+"-") || strings.HasPrefix(id, scope+".")
 }
 
 func fuzzyTextMatch(candidate, query string) bool {

@@ -9,6 +9,7 @@ import { bindHistory, openHash, parseHash, startHistory } from "./nav";
 import { ensureVisible, render, renderBanner, renderStale, revealInTree } from "./render";
 import { S } from "./state";
 import { $, esc, store } from "./util";
+import { bindVerticals } from "./verticals";
 
 function pulse(): void {
   const dot = document.getElementById("hdot");
@@ -111,6 +112,7 @@ async function boot(): Promise<void> {
     D.build = { version: s.version, commit: s.commit, commit_url: s.commit_url, modified: s.modified };
     renderBanner(s.banner, s.banner_link);
     bindAll();
+    bindVerticals(render);
     bindVisualViewport();
     bindHistory(render, closeSheet);
     // The view first, so the list does not flash the tree; the issue once loaded.

@@ -60,6 +60,15 @@
   .chip.q { border-style: dashed; max-width: 180px; }
   .chip.q span { overflow: hidden; text-overflow: ellipsis; }
   .chip.fx { border-color: var(--line); }
+  .verts { border-top: 0; }
+  /* A short window (a phone on its side) keeps its height for the list: the row shows only while a filter is on, so it never reads as everything. */
+  @media (max-height: 520px) { .verts:not(.filtered) { display: none; } }
+  .chip.vchip { max-width: 160px; }
+  .chip.vchip.on { border-color: var(--accent); background: var(--selected); color: var(--text); }
+  .chip.vchip.on .n { color: var(--text-soft); }
+  .chip.vchip.zero { opacity: 0.55; }
+  .chip.vhid { border-style: dashed; color: var(--text-soft); }
+  .chip.vchip, .chip[data-vertall] { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
   .chips .sep { flex: none; width: 1px; height: 18px; background: var(--line); }
 
   /* The views and the bar: a column with the bar at the bottom on a phone, a row with the bar as a rail at the left in every other class.
@@ -447,7 +456,7 @@
   .app:is(.desktop, .wide) {
     --rail-w: 220px; --dw: 430px;
     display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr) auto;
-    grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto auto auto minmax(0, 1fr);
   }
   .app.wide {
     --dw: clamp(560px, 24vw, 680px);
@@ -464,11 +473,12 @@
   .app:is(.desktop, .wide) .hd .proj { margin-left: -4px; padding: 0 6px 0 4px; }
   .app:is(.desktop, .wide) .banner { grid-column: 2 / -1; grid-row: 3; min-width: 0; }
   .app:is(.desktop, .wide) .chips { grid-column: 2 / -1; grid-row: 4; min-width: 0; }
-  .app:is(.desktop, .wide) .stale { grid-column: 2 / -1; grid-row: 5; min-width: 0; }
+  .app:is(.desktop, .wide) .verts { grid-row: 5; }
+  .app:is(.desktop, .wide) .stale { grid-column: 2 / -1; grid-row: 6; min-width: 0; }
   .app:is(.desktop, .wide) .body, .app:is(.desktop, .wide) #sheetHost { display: contents; }
-  .app:is(.desktop, .wide) main { grid-column: 2; grid-row: 6; }
+  .app:is(.desktop, .wide) main { grid-column: 2; grid-row: 7; }
   .app:is(.desktop, .wide).hasdetail .view { right: 0; }
-  .app:is(.desktop, .wide) .detail { position: relative; inset: auto; grid-column: 3; grid-row: 6; min-height: 0; background: var(--bg); box-shadow: none; }
+  .app:is(.desktop, .wide) .detail { position: relative; inset: auto; grid-column: 3; grid-row: 7; min-height: 0; background: var(--bg); box-shadow: none; }
   .app:is(.desktop, .wide) .detail.full { grid-column: 2 / -1; left: auto; }
   /* The sidebar: the brand, one row per view with its glyph, and the connection at the foot. */
   .app:is(.desktop, .wide) nav.bar { padding: 0 0 var(--sab); }

@@ -61,7 +61,7 @@ export default defineConfig({
     ...(["Desktop Chrome", "Desktop Safari", "Desktop Firefox"] as const).map((device) => ({
       name: device === "Desktop Chrome" ? "desktop" : device.toLowerCase().replace(" ", "-"),
       use: { ...devices[device], viewport: { width: 1440, height: 900 } },
-      testMatch: /(wide|keys|read|write|memory|desktop|timeline)\.spec/,
+      testMatch: /(wide|keys|read|write|memory|desktop|timeline|verticals)\.spec/,
     })),
     { name: "ipad", use: { ...devices["iPad Pro 11"] }, testMatch: /(wide|keys)\.spec/ },
     // desktop.spec.ts covers the desktop and wide classes; at 1440 px the three desktop browsers run it already.

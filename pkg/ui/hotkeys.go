@@ -197,7 +197,7 @@ func ResolveHotkeys(in config.Hotkeys) (Hotkeys, []error) {
 
 var queryFields = []QueryField{
 	QueryFieldID, QueryFieldTitle, QueryFieldStatus, QueryFieldPriority,
-	QueryFieldType, QueryFieldLabel, QueryFieldAssignee, QueryFieldProject,
+	QueryFieldType, QueryFieldLabel, QueryFieldAssignee, QueryFieldProject, QueryFieldIn,
 }
 
 func queryFieldNames() []string {

@@ -5,6 +5,7 @@
 import * as api from "./api";
 import type { Issue } from "./api.gen";
 import { D, ancestors, blocksOf, descendants, eff, get, isArchived, isReady, kids, laneOf, openBlockers, pool, progress, projectOf, shortId, type Item } from "./data";
+import { hiddenCount, verticalChips } from "./verticals";
 import { DEFAULT_CHIPS, PC, S, SORTS, chipRowVisible, laneHeight, matches, nextLaneHeight, queryString, stOf, textMatches, treeRows, tyOf, type LaneHeight, type TreeRow } from "./state";
 import { syncHistory } from "./nav";
 import { renderMermaidBlocks } from "./mermaid";
@@ -110,7 +111,7 @@ export function render(): void {
     : currentPlace;
   const scrolled = S.view === placedView ? scrollPlaces() : placedView ? [] : savedPlaces(S.view);
   placedView = S.view;
-  renderHeader(); renderChips(); renderBar(); renderStale();
+  renderHeader(); renderChips(); renderVerticals(); renderBar(); renderStale();
   (["tree", "board", "search", "more", "graph", "memory", "timeline"] as const).forEach(v => { $("#v" + v[0].toUpperCase() + v.slice(1)).hidden = S.view !== v; });
   if (S.view === "tree") renderTree();
   if (S.view === "board") renderBoard();
@@ -183,6 +184,24 @@ function renderChips(): void {
   // The phone board has no toolbar of its own, so its options sit at the end of the chip row.
   if (onBoard && !split()) h += `<button class="chip" data-act="boardopts" aria-label="Board options">⚙ ${esc(S.board.group)}</button>`;
   el.innerHTML = h;
+}
+
+/**
+ * renderVerticals draws the vertical toggles: chips with open counts, "All", and a note of how many are hidden
+ * so a filtered board never reads as the whole board. Tapping is verticals.ts bindVerticals.
+ */
+function renderVerticals(): void {
+  const el = $("#verts");
+  const chips = verticalChips();
+  el.hidden = !chipRowVisible() || chips.length < 2;
+  if (el.hidden) return;
+  const hid = hiddenCount();
+  el.classList.toggle("filtered", hid > 0);
+  const fmt = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
+  el.innerHTML = `<button class="chip ${hid ? "" : "on"}" data-vertall aria-pressed="${!hid}" title="Show every vertical">All</button>`
+    + (hid ? `<span class="chip vhid" role="status">${hid} hidden</span>` : "")
+    + `<span class="sep"></span>`
+    + chips.map(c => `<button class="chip vchip ${c.on ? "on" : ""} ${c.open ? "" : "zero"}" data-vert="${esc(c.key)}" aria-pressed="${c.on}" title="${esc(c.key)}: ${c.open} open. Tap to toggle, long press to show only this one">${esc(c.label)} <span class="n">${fmt(c.open)}</span></button>`).join("");
 }
 
 function renderBar(): void {
@@ -658,7 +677,7 @@ export function renderBoard(): void {
 
 /* ================= search ================= */
 
-const PRED = ["status:", "type:", "priority:", "assignee:", "label:", "id:", "title:", "project:", "!status:closed"];
+const PRED = ["status:", "type:", "priority:", "assignee:", "label:", "id:", "title:", "project:", "in:", "!status:closed"];
 
 export function suggestions(val: string): { t: string; v: boolean }[] {
   const tok = val.split(/\s+/).pop() || "";
@@ -693,7 +712,7 @@ export function renderSearch(): void {
   if (!q) {
     const rec = store.get<string[]>("recent", []);
     $("#sList").innerHTML = (rec.length ? `<div class="sec">Recent queries</div>` + rec.map(r => `<button class="item" data-recent="${esc(r)}"><span class="g" aria-hidden="true">↺</span><span class="x">${esc(r)}</span></button>`).join("") : "")
-      + `<div class="sec">Syntax</div><div class="md syntax"><p><code>status:open</code> <code>type:bug</code> <code>priority:1</code> <code>assignee:alice</code> <code>label:mobile</code> <code>project:b9s</code> <code>id:foit</code> <code>title:graph</code>. The same field twice means either value. <code>!</code> negates, and a bare <code>!closed</code> means not that status. Plain words match ID and title, fuzzily. It is the TUI's query language, evaluated by b9s.</p></div>`;
+      + `<div class="sec">Syntax</div><div class="md syntax"><p><code>status:open</code> <code>type:bug</code> <code>priority:1</code> <code>assignee:alice</code> <code>label:mobile</code> <code>project:b9s</code> <code>id:foit</code> <code>in:pg</code> <code>title:graph</code>. <code>in:</code> is exact: a repository prefix or an issue and its dotted children. The same field twice means either value. <code>!</code> negates, and a bare <code>!closed</code> means not that status. Plain words match ID and title, fuzzily. It is the TUI's query language, evaluated by b9s.</p></div>`;
     return;
   }
   if (search.text !== q || search.version !== D.version) {

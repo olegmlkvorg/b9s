@@ -442,3 +442,33 @@ func TestTreeQueryRetainsOnlyAncestorsNeededForContext(t *testing.T) {
 		t.Errorf("board shows %d issues, want only the matching child", got)
 	}
 }
+
+func TestIssueQueryInIsExactNotFuzzy(t *testing.T) {
+	cases := []struct {
+		query, id string
+		want      bool
+	}{
+		{"in:pg", "pg-c78b3e", true},
+		{"in:gc", "gc-4f2a", true},
+		{"in:gc", "pg-c78b3e", false}, // id:gc matches it, as g then c in order
+		{"in:house", "house-ar2.164", true},
+		{"in:house-ar2", "house-ar2", true},
+		{"in:house-ar2", "house-ar2.164", true},
+		{"in:house-ar2", "house-ar21", false},
+		{"in:house-ar2", "house-ar3.1", false},
+		{"in:p", "pg-c78b3e", false},
+		{"!in:pg", "pg-c78b3e", false},
+		{"!in:pg", "gc-4f2a", true},
+	}
+	for _, c := range cases {
+		if got := ParseIssueQuery(c.query).Matches(model.Issue{ID: c.id}); got != c.want {
+			t.Errorf("%s on %s = %v, want %v", c.query, c.id, got, c.want)
+		}
+	}
+	if !ParseIssueQuery("id:gc").Matches(model.Issue{ID: "pg-c78b3e"}) {
+		t.Error("control: id:gc is fuzzy and matches pg-c78b3e, which is why in: exists")
+	}
+	if !ParseIssueQuery("in:pg in:gc").Matches(model.Issue{ID: "gc-1"}) {
+		t.Error("the same field twice means either value")
+	}
+}

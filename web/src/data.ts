@@ -3,6 +3,7 @@
 
 import type { Health, Issue, Person, ProjectInfo, Snapshot } from "./api.gen";
 import { parseTime, store } from "./util";
+import { inVerticals } from "./verticals";
 
 export interface Item extends Issue {
   /** title without the "[short-id] " prefix Beads titles carry */
@@ -76,7 +77,8 @@ export const get = (id: string): Item | undefined => D.all.get(id);
 export const kids = (id: string): string[] => D.kids.get(id) || [];
 /** The house archives old closed work with this label (Assist bin/tracker-archive.ts). Every view leaves it out; get() still finds it. */
 export const isArchived = (i: Item): boolean => (i.labels || []).includes("archived");
-export const pool = (): Item[] => { const all = [...D.all.values()]; return D.showArchived ? all : all.filter(i => !isArchived(i)); };
+/** pool is what every view reads: archived work (unless shown) and verticals the chips hide are left out. */
+export const pool = (): Item[] => { const all = [...D.all.values()].filter(inVerticals); return D.showArchived ? all : all.filter(i => !isArchived(i)); };
 
 export function descendants(id: string, out: string[] = [], seen = new Set<string>()): string[] {
   for (const k of kids(id)) {
