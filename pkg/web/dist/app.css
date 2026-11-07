@@ -64,6 +64,7 @@
   /* A short window (a phone on its side) keeps its height for the list: the row shows only while a filter is on, so it never reads as everything. */
   @media (max-height: 520px) { .verts:not(.filtered) { display: none; } }
   .chip.vchip { max-width: 160px; }
+  .chip.vchip .vl { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .chip.vchip.on { border-color: var(--accent); background: var(--selected); color: var(--text); }
   .chip.vchip.on .n { color: var(--text-soft); }
   .chip.vchip.zero { opacity: 0.55; }

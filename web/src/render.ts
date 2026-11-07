@@ -201,7 +201,7 @@ function renderVerticals(): void {
   el.innerHTML = `<button class="chip ${hid ? "" : "on"}" data-vertall aria-pressed="${!hid}" title="Show every vertical">All</button>`
     + (hid ? `<span class="chip vhid" role="status">${hid} hidden</span>` : "")
     + `<span class="sep"></span>`
-    + chips.map(c => `<button class="chip vchip ${c.on ? "on" : ""} ${c.open ? "" : "zero"}" data-vert="${esc(c.key)}" aria-pressed="${c.on}" title="${esc(c.key)}: ${c.open} open. Tap to toggle, long press to show only this one">${esc(c.label)} <span class="n">${fmt(c.open)}</span></button>`).join("");
+    + chips.map(c => `<button class="chip vchip ${c.on ? "on" : ""} ${c.open ? "" : "zero"}" data-vert="${esc(c.key)}" aria-pressed="${c.on}" title="${esc(c.key)}: ${c.open} open. Tap to toggle, long press to show only this one"><span class="vl">${esc(c.label)}</span> <span class="n">${fmt(c.open)}</span></button>`).join("");
 }
 
 function renderBar(): void {
